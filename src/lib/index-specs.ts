@@ -20,6 +20,8 @@ export type CollectionName = keyof typeof COLLECTIONS;
 export type IndexSpec = {
   key: Document;
   unique?: boolean;
+  /** With 0, MongoDB deletes each row once the indexed date has passed. */
+  expireAfterSeconds?: number;
 };
 
 /**
@@ -31,7 +33,7 @@ export const INDEX_SPECS: Record<CollectionName, IndexSpec[]> = {
   sessions: [
     { key: { tokenHash: 1 }, unique: true },
     { key: { userId: 1 } },
-    { key: { expiresAt: 1 } },
+    { key: { expiresAt: 1 }, expireAfterSeconds: 0 },
   ],
   members: [{ key: { memberType: 1, current: 1, order: 1 } }, { key: { name: 1 } }],
   notices: [
@@ -51,5 +53,8 @@ export const INDEX_SPECS: Record<CollectionName, IndexSpec[]> = {
   projectUpdates: [{ key: { projectId: 1, date: -1 } }],
   galleryItems: [{ key: { album: 1, order: 1 } }, { key: { eventId: 1 } }],
   settings: [{ key: { key: 1 }, unique: true }],
-  loginAttempts: [{ key: { key: 1 }, unique: true }, { key: { expiresAt: 1 } }],
+  loginAttempts: [
+    { key: { key: 1 }, unique: true },
+    { key: { expiresAt: 1 }, expireAfterSeconds: 0 },
+  ],
 };

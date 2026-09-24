@@ -32,6 +32,17 @@ describe("index specs", () => {
     expect(INDEX_SPECS.financialYears).toContainEqual({ key: { label: 1 }, unique: true });
   });
 
+  it("lets the database sweep expired sessions and lockouts on its own", () => {
+    expect(INDEX_SPECS.sessions).toContainEqual({
+      key: { expiresAt: 1 },
+      expireAfterSeconds: 0,
+    });
+    expect(INDEX_SPECS.loginAttempts).toContainEqual({
+      key: { expiresAt: 1 },
+      expireAfterSeconds: 0,
+    });
+  });
+
   it("never declares a non-unique index on a field that must be unique", () => {
     for (const [collection, specs] of Object.entries(INDEX_SPECS)) {
       const plain = specs.filter((spec) => !spec.unique).map((spec) => JSON.stringify(spec.key));

@@ -89,12 +89,14 @@ export async function ensureIndexes(): Promise<string[]> {
   for (const [logicalName, specs] of Object.entries(INDEX_SPECS)) {
     const physical = COLLECTIONS[logicalName as CollectionName];
     for (const spec of specs) {
-      await db
-        .collection(physical)
-        .createIndex(spec.key, spec.unique ? { unique: true } : undefined);
-      created.push(
-        `${physical}.${Object.keys(spec.key).join("_")}${spec.unique ? ":unique" : ""}`,
-      );
+      const options: Document = {};
+      if (spec.unique) options.unique = true;
+      if (spec.expireAfterSeconds !== undefined) {
+        options.expireAfterSeconds = spec.expireAfterSeconds;
+      }
+      await db.collection(physical).createIndex(spec.key, options);
+      const suffix = spec.unique ? ":unique" : spec.expireAfterSeconds !== undefined ? ":ttl" : "";
+      created.push(`${physical}.${Object.keys(spec.key).join("_")}${suffix}`);
     }
   }
 
