@@ -1,0 +1,33 @@
+{
+  "$comment": "Transcribed from the Approval Order of the Young Chakma Association (Zone), Bageisury — Order No. 015003/01/2026-27/ZYCA-B, dated 7 September 2026 — which approves the Branch Executive Committee of Tellosora (Sumsilui) for a period of two years from the date of approval. Three bodies are named in it: Office Bearers, Executive Members, and the Advisory and Auditory Board. Two things were changed in transcription: designations are written out where the order abbreviates them ('Gen. Secretary' becomes 'General Secretary', 'E M' becomes 'Executive Member'), and each body's Sl. No. was offset (1-13, 21-25, 31-35) so the three lists keep their own order inside one collection. A dash in the order's designation column is stored as no position at all. The F./NAMES column is recorded as fatherName and belongs to the branch's own record — it never reaches the public page. No phone number here is shown on the site until 'Show contact publicly' is turned on for that person in Admin → Members.",
+  "term": "2026-2028",
+  "approvedOn": "2026-09-07",
+  "approvalOrder": "015003/01/2026-27/ZYCA-B",
+  "members": [
+    { "name": "Shyamlal Kanti Chakma", "fatherName": "Manu Ranjan", "memberType": "office_bearer", "position": "President", "phone": "8731718141", "order": 1 },
+    { "name": "Angu Macmillan Chakma", "fatherName": "Nobin Kusum", "memberType": "office_bearer", "position": "Vice President", "phone": "7003069633", "order": 2 },
+    { "name": "Tarujit Chakma", "fatherName": "Pritimoy Chakma", "memberType": "office_bearer", "position": "General Secretary", "phone": "6901399642", "order": 3 },
+    { "name": "F. Ashok Chakma", "fatherName": "Anjan Chakma", "memberType": "office_bearer", "position": "Treasurer", "phone": "8131933371", "order": 4 },
+    { "name": "Anukul Chakma", "fatherName": "Pradipial Chakma", "memberType": "office_bearer", "position": "Games & Sports Secretary", "phone": "7085380121", "order": 5 },
+    { "name": "Maya Ranjan Chakma", "fatherName": "Jalanta Chakma", "memberType": "office_bearer", "position": "Organising Secretary", "phone": "7085314145", "order": 6 },
+    { "name": "Milon Chakma", "fatherName": "Notun Bikash", "memberType": "office_bearer", "position": "Educational Secretary", "phone": "9869630077", "order": 7 },
+    { "name": "Dillon Chakma", "fatherName": "Bhagyaram", "memberType": "office_bearer", "position": "Information & Publicity Secretary", "phone": "8971884377", "order": 8 },
+    { "name": "Joshbir Chakma", "fatherName": "Sukrasen", "memberType": "office_bearer", "position": "Finance Secretary", "phone": "7005755251", "order": 9 },
+    { "name": "Rimjim Chakma", "fatherName": "Ram Chandra", "memberType": "office_bearer", "position": "Cultural Secretary", "phone": "9233047641", "order": 10 },
+    { "name": "Priyo Ranjan Chakma", "fatherName": "Lokkhi Kumar", "memberType": "office_bearer", "position": "Office Secretary", "phone": "7889645292", "order": 11 },
+    { "name": "Priyo Ranjan (Arbo) Chakma", "fatherName": "Kala Chand", "memberType": "office_bearer", "position": "Social Welfare Secretary", "phone": "9383007923", "order": 12 },
+    { "name": "Anitamoy Chakma", "fatherName": "Kalachand Chakma", "memberType": "office_bearer", "position": "Religious Secretary", "phone": "", "order": 13 },
+
+    { "name": "Shanti Priyo (Lambhani)", "fatherName": "Rajendra", "memberType": "executive_member", "position": "Executive Member", "phone": "7085977229", "order": 21 },
+    { "name": "Lakkhi Ranjan (Lala)", "fatherName": "Indra Kumar", "memberType": "executive_member", "position": "Executive Member", "phone": "9863092591", "order": 22 },
+    { "name": "Barun Chakma", "fatherName": "Sushil Chandra", "memberType": "executive_member", "position": "Executive Member", "phone": "7233070035", "order": 23 },
+    { "name": "Partar Muni", "fatherName": "Oleshwary", "memberType": "executive_member", "position": "Executive Member", "phone": "9612232815", "order": 24 },
+    { "name": "Subir Chakma", "fatherName": "Kajal Kanti", "memberType": "executive_member", "position": "Executive Member", "phone": "6009096902", "order": 25 },
+
+    { "name": "Suhil Bikash (Pensioner)", "fatherName": "", "memberType": "advisory_board", "position": "", "phone": "8727938633", "order": 31 },
+    { "name": "S. Dippu Chakma (VCP)", "fatherName": "", "memberType": "advisory_board", "position": "", "phone": "8974074581", "order": 32 },
+    { "name": "Suresh Kanti Chakma (Ex. MDC)", "fatherName": "", "memberType": "advisory_board", "position": "", "phone": "8415850117", "order": 33 },
+    { "name": "Sukriti Chakma (E. M. LADC)", "fatherName": "", "memberType": "advisory_board", "position": "", "phone": "9413009135", "order": 34 },
+    { "name": "Manekchhua (Lambui/Intellectual)", "fatherName": "", "memberType": "advisory_board", "position": "", "phone": "9383607914", "order": 35 }
+  ]
+}

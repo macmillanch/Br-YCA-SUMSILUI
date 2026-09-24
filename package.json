@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "seed": "tsx scripts/seed.ts",
+    "seed:committee": "tsx scripts/seed-committee.ts",
     "seed:test": "tsx scripts/seed-test-db.ts"
   },
   "dependencies": {

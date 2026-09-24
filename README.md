@@ -30,6 +30,7 @@ office-bearers under **Users**.
 | `npm test` | Vitest unit tests — no database needed |
 | `npm run seed` | indexes + settings + first super-admin on the current database |
 | `npm run seed:test` | resets `yca_sumsilui_test` with the three known test users |
+| `npm run seed:committee` | records the committee from `data/committee-2026-2028.json` — adds anyone missing, never rewrites a saved record |
 | `npm run test:e2e` | Playwright flows; run `seed:test` first |
 
 `npm run test:e2e` needs a browser. Playwright downloads its own pinned Chromium
@@ -41,6 +42,12 @@ already installed on the machine instead. CI leaves it unset.
 the build replaces the dev server's chunks under it; the running dev server then
 requests a CSS file that no longer exists and reloads in a loop with no client
 JavaScript, so no form works. Delete `.next` and restart `npm run dev` to recover.
+
+**A server left on port 3000 by a test run reads the test database.** Playwright
+starts `npm run dev` itself with `MONGODB_DB=yca_sumsilui_test`, and later runs
+reuse whatever is already listening — so a page can look empty of the names
+`npm run seed:committee` just recorded. Stop that server and run `npm run dev` to
+browse the database in `.env.local`.
 
 ## Layout
 
