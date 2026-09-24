@@ -8,22 +8,49 @@
 
 import { getSettings, type SettingsValues } from "@/lib/settings";
 import { fiscalYearFromLabel } from "@/lib/fiscal-year";
-import type { NoticeKind, ProjectStatus } from "@/lib/types";
+import { listMembers, toDirectoryRow, toPublicMember } from "@/lib/members";
+import { getPublishedNoticeBySlug, listPublishedNotices } from "@/lib/notices";
+import type { MemberType, NoticeKind, ProjectStatus } from "@/lib/types";
 
-export type { NoticeKind, ProjectStatus };
+export type { MemberType, NoticeKind, ProjectStatus };
+
+/** One language a notice was actually written in — never an empty panel. */
+export type NoticeTranslation = {
+  language: "bn" | "cdp";
+  label: string;
+  title: string;
+  body: string;
+};
 
 export type PublicNotice = {
   slug: string;
   kind: NoticeKind;
   title: string;
+  /** `YYYY-MM-DD` in the branch's own time zone; empty while a draft. */
   publishedOn: string;
   eventDate?: string;
   venue: string | null;
   excerpt: string;
   body: string;
-  hasChakma: boolean;
-  hasBangla: boolean;
+  translations: readonly NoticeTranslation[];
+  attachments: readonly { name: string; url: string }[];
 };
+
+/**
+ * Public reads report three outcomes, not two. A database that cannot be
+ * reached must not turn into a 404 or a blank gap — §9 of the spec asks for the
+ * page to stay standing and the section to say it is temporarily unavailable.
+ */
+export type PublicRead<T> =
+  | { state: "ready"; items: T[] }
+  | { state: "empty" }
+  | { state: "unavailable" };
+
+/** The same three outcomes for one page, where "empty" is a 404 rather than a gap. */
+export type NoticeDetail =
+  | { state: "ready"; notice: PublicNotice }
+  | { state: "missing" }
+  | { state: "unavailable" };
 
 export type PublicProject = {
   slug: string;
@@ -75,30 +102,22 @@ export type ContactDetails = {
 export type HomepageContent = {
   introduction: string;
   notices: readonly PublicNotice[];
+  /** True when the notices could not be read at all — not merely none yet. */
+  noticesUnavailable: boolean;
   projects: readonly PublicProject[];
   finance: FinanceSnapshot | null;
   photos: readonly GalleryPhoto[];
   contact: ContactDetails;
   /**
    * True while the branch has supplied no real records. Every section renders a
-   * DEMO marker from this flag, and it flips to false by itself once the admin
-   * publishes a notice — demo text can never quietly become a public record.
+   * DEMO marker from this flag. It still covers the whole homepage while works
+   * and finance come from Plan 2/3, so it stays on until Task 6 retires the
+   * sample data wholesale — demo text can never quietly become a public record.
    */
   isSample: boolean;
 };
 
-export const KIND_LABEL: Record<NoticeKind, string> = {
-  notice: "Notice",
-  press_release: "Press release",
-  announcement: "Announcement",
-};
-
-export const STATUS_LABEL: Record<ProjectStatus, string> = {
-  ongoing: "Ongoing",
-  proposed: "Proposed",
-  completed: "Completed",
-  deferred: "Deferred",
-};
+export { KIND_LABEL, MEMBER_TYPE_LABEL, STATUS_LABEL } from "@/lib/labels";
 
 const SAMPLE_NOTICES: readonly PublicNotice[] = [
   {
@@ -111,8 +130,8 @@ const SAMPLE_NOTICES: readonly PublicNotice[] = [
     excerpt:
       "The branch office-bearers will present the year's accounts and the works carried out during the year.",
     body: "All members of the branch are requested to attend the Annual General Meeting.\n\nThe office-bearers will present the accounts for the year, the works carried out, and the programme for the coming year. Members who wish to raise a matter may send it to the Secretary in writing before the meeting.\n\nRefreshments will be arranged for those attending.",
-    hasChakma: false,
-    hasBangla: false,
+    translations: [],
+    attachments: [],
   },
   {
     slug: "sample-blood-donation-camp",
@@ -124,8 +143,8 @@ const SAMPLE_NOTICES: readonly PublicNotice[] = [
     excerpt:
       "Registration at the branch office. Bring an identity card. Donors above 60 are advised to consult a doctor first.",
     body: "The branch is organising a blood donation camp with the help of the local blood bank.\n\nVolunteers are needed to register donors, guide donors through the camp, and stay afterwards to help with refreshments. Anyone able to give part of the day is welcome.\n\nDonors should eat before attending and carry an identity card. Donors above sixty are advised to consult their doctor first.",
-    hasChakma: false,
-    hasBangla: false,
+    translations: [],
+    attachments: [],
   },
   {
     slug: "sample-student-scholarship",
@@ -137,8 +156,8 @@ const SAMPLE_NOTICES: readonly PublicNotice[] = [
     excerpt:
       "Students of classes IX, XI and the first year of graduation may apply with a marks card and income certificate.",
     body: "Applications are invited from students of the community for the branch assistance scheme.\n\nStudents of class IX, class XI and the first year of graduation may apply. A recent marks card, a residence certificate, and an income certificate of the guardian are required.\n\nApplications are received at the branch office. The selection committee meets after the last date and the list of assistance is published afterwards.",
-    hasChakma: false,
-    hasBangla: false,
+    translations: [],
+    attachments: [],
   },
   {
     slug: "sample-press-road-repair",
@@ -149,8 +168,8 @@ const SAMPLE_NOTICES: readonly PublicNotice[] = [
     excerpt:
       "A delegation met the local member and handed over a memorandum signed by residents of the locality.",
     body: "A delegation of the branch office-bearers met the local member and handed over a memorandum on the condition of the approach road.\n\nThe memorandum records that a stretch of the road has remained unrepaired through two monsoons, that school vehicles cannot use it in heavy rain, and that residents have collected signatures in support.\n\nThe association requests a written reply and a target date for the repair.",
-    hasChakma: false,
-    hasBangla: false,
+    translations: [],
+    attachments: [],
   },
 ];
 
@@ -273,6 +292,7 @@ const SAMPLE_CONTENT: HomepageContent = {
   introduction:
     "Young Chakma Association, Sumsilui Branch serves the Chakma community of Sumsilui in Mizoram. The branch carries out social work, keeps its accounts open for members to read, and publishes its notices here.",
   notices: SAMPLE_NOTICES,
+  noticesUnavailable: false,
   projects: SAMPLE_PROJECTS,
   finance: {
     yearLabel: "2026-27",
@@ -287,20 +307,135 @@ const SAMPLE_CONTENT: HomepageContent = {
 };
 
 export async function getHomepageContent(): Promise<HomepageContent> {
-  return { ...SAMPLE_CONTENT, contact: await loadContact() };
+  const notices = await getNotices();
+  return {
+    ...SAMPLE_CONTENT,
+    notices: notices.state === "ready" ? notices.items : [],
+    noticesUnavailable: notices.state === "unavailable",
+    contact: await loadContact(),
+  };
 }
 
-export async function getNotices(kind?: NoticeKind): Promise<readonly PublicNotice[]> {
-  const all = SAMPLE_CONTENT.notices;
-  return kind ? all.filter((notice) => notice.kind === kind) : all;
+export async function getNotices(kind?: NoticeKind): Promise<PublicRead<PublicNotice>> {
+  let published: PublicNotice[];
+  try {
+    published = await listPublishedNotices(kind);
+  } catch (error) {
+    console.error("notices are unavailable", error);
+    return { state: "unavailable" };
+  }
+  if (published.length > 0) return { state: "ready", items: published };
+
+  // Nothing published yet, so the standing-in notices keep the layout reviewable.
+  // They are marked DEMO wherever they render, and Task 6 deletes them.
+  const samples = SAMPLE_NOTICES.filter((notice) => !kind || notice.kind === kind);
+  return samples.length > 0 ? { state: "ready", items: samples } : { state: "empty" };
 }
 
-export async function getNoticeBySlug(slug: string): Promise<PublicNotice | null> {
-  return SAMPLE_CONTENT.notices.find((notice) => notice.slug === slug) ?? null;
+/**
+ * A draft 404s: it is addressed by the same slug, but it is not in the published
+ * query, and an unissued notice must not be readable by guessing its address.
+ */
+export async function getNoticeBySlug(slug: string): Promise<NoticeDetail> {
+  let published: PublicNotice | null;
+  try {
+    published = await getPublishedNoticeBySlug(slug);
+  } catch (error) {
+    console.error("this notice is unavailable", error);
+    return { state: "unavailable" };
+  }
+  if (published) return { state: "ready", notice: published };
+
+  // Only the standing-in notices, whose addresses are fixed, keep resolving.
+  // A real slug that is not in the database is a genuine 404.
+  const sample = SAMPLE_NOTICES.find((notice) => notice.slug === slug);
+  return sample ? { state: "ready", notice: sample } : { state: "missing" };
 }
 
-export async function getProjects(status?: ProjectStatus): Promise<readonly PublicProject[]> {
-  const all = SAMPLE_CONTENT.projects;
+/**
+ * A committee card. `phone` and `email` are already absent when the member has
+ * not agreed to be contacted — the check happens while the payload is built, so
+ * a number typed for the office cannot reach a browser by a page forgetting to
+ * hide it.
+ */
+export type PublicMember = {
+  name: string;
+  position: string | null;
+  term: string | null;
+  photoUrl: string | null;
+  phone: string | null;
+  email: string | null;
+};
+
+/** One line of the community register: a name, a ward, and any office held. */
+export type DirectoryRow = {
+  name: string;
+  ward: string | null;
+  position: string | null;
+};
+
+export type CommitteeSection = {
+  type: MemberType;
+  label: string;
+  members: PublicMember[];
+};
+
+export type CommitteePage =
+  | { state: "ready"; sections: CommitteeSection[]; past: PublicMember[] }
+  | { state: "empty" }
+  | { state: "unavailable" };
+
+/** The three bodies the approval order names, in the order the site shows them. */
+const COMMITTEE_GROUPS: readonly { type: MemberType; label: string }[] = [
+  { type: "office_bearer", label: "Office-bearers" },
+  { type: "executive_member", label: "Executive members" },
+  { type: "advisory_board", label: "Advisory and auditory board" },
+];
+
+/**
+ * The committee in its three parts, plus those who held office before them. An
+ * empty section is dropped rather than shown as a heading over nothing, so a
+ * branch that has entered its office-bearers but not its board sees one list,
+ * not one list and a gap.
+ */
+export async function getCommittee(): Promise<CommitteePage> {
+  let docs;
+  try {
+    docs = await listMembers();
+  } catch (error) {
+    console.error("the committee list is unavailable", error);
+    return { state: "unavailable" };
+  }
+
+  const current = docs.filter((doc) => doc.current);
+  const sections = COMMITTEE_GROUPS.map((group) => ({
+    ...group,
+    members: current
+      .filter((doc) => doc.memberType === group.type)
+      .map((doc) => toPublicMember(doc)),
+  })).filter((section) => section.members.length > 0);
+
+  const past = docs
+    .filter((doc) => !doc.current && doc.memberType !== "community_member")
+    .map((doc) => toPublicMember(doc));
+
+  if (sections.length === 0 && past.length === 0) return { state: "empty" };
+  return { state: "ready", sections, past };
+}
+
+export async function getMemberDirectory(): Promise<PublicRead<DirectoryRow>> {
+  try {
+    const docs = await listMembers({ memberType: "community_member" });
+    return docs.length > 0
+      ? { state: "ready", items: docs.map((doc) => toDirectoryRow(doc)) }
+      : { state: "empty" };
+  } catch (error) {
+    console.error("the member register is unavailable", error);
+    return { state: "unavailable" };
+  }
+}
+
+export async function getProjects(status?: ProjectStatus): Promise<readonly PublicProject[]> {  const all = SAMPLE_CONTENT.projects;
   return status ? all.filter((project) => project.status === status) : all;
 }
 

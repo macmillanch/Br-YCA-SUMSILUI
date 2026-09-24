@@ -5,7 +5,13 @@ export default defineConfig({
   fullyParallel: false,
   // Every spec shares one test database and truncates it.
   workers: 1,
+  // The suite runs against `npm run dev`, which compiles a route the first time
+  // it is opened. On a cold cache that alone outlasts Playwright's 30s default.
+  timeout: 120_000,
   reporter: [["list"]],
+  // Assertions wait on `router.refresh()` and on a route the dev server has to
+  // compile on first visit, both of which outrun the 5s default here.
+  expect: { timeout: 20_000 },
   use: {
     baseURL: "http://localhost:3000",
     trace: "retain-on-failure",

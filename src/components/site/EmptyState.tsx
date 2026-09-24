@@ -22,6 +22,22 @@ export function EmptyState({
   );
 }
 
+/**
+ * Spec §9: when a public read fails, the page keeps its layout and navigation
+ * and only the affected section says so. An error page for a photo strip would
+ * read as though the branch had closed.
+ */
+export function SectionUnavailable({ what }: { what: string }) {
+  return (
+    <p
+      role="status"
+      className="rounded-[12px] border border-dashed border-line bg-paper-alt p-6 text-sm text-ink-muted"
+    >
+      {what} are temporarily unavailable — please try again.
+    </p>
+  );
+}
+
 export function PageHeader({
   title,
   description,

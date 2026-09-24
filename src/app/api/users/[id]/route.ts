@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { fail, fromError, ok } from "@/lib/api-response";
+import { fail, fromError, ok, validationFail } from "@/lib/api-response";
 import { destroySessionsForUser } from "@/lib/auth/session";
 import { requireRole } from "@/lib/auth/require-role";
 import { requireObjectId } from "@/lib/mongo-oid";
@@ -16,12 +16,7 @@ export async function PATCH(
     return await requireRole(request, [], async ({ user: actor }) => {
       const targetId = requireObjectId(id);
       const parsed = USER_PATCH_SCHEMA.safeParse(await request.json().catch(() => null));
-      if (!parsed.success) {
-        const fieldErrors = Object.fromEntries(
-          parsed.error.issues.map((issue) => [issue.path.join(".") || "form", issue.message]),
-        );
-        return fail(400, "validation_failed", "Some fields need attention", fieldErrors);
-      }
+      if (!parsed.success) return validationFail(parsed.error);
 
       if (targetId.equals(actor._id)) {
         return fail(409, "self_change", "You cannot change your own role or deactivate yourself.");

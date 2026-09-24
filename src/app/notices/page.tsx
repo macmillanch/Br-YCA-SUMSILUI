@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { NoticeCard } from "@/components/site/NoticeCard";
-import { EmptyState, PageHeader } from "@/components/site/EmptyState";
+import { EmptyState, PageHeader, SectionUnavailable } from "@/components/site/EmptyState";
 import { getNotices, KIND_LABEL, type NoticeKind } from "@/lib/content";
 
 export const metadata: Metadata = {
@@ -19,7 +19,7 @@ export default async function NoticesPage({
 }) {
   const { kind } = await searchParams;
   const active = KINDS.includes(kind as NoticeKind) ? (kind as NoticeKind) : undefined;
-  const notices = await getNotices(active);
+  const read = await getNotices(active);
 
   return (
     <div className="container-page space-y-6 py-10">
@@ -53,19 +53,21 @@ export default async function NoticesPage({
         ))}
       </nav>
 
-      {notices.length > 0 ? (
+      {read.state === "ready" ? (
         <ul className="grid gap-4 sm:grid-cols-2">
-          {notices.map((notice) => (
+          {read.items.map((notice) => (
             <li key={notice.slug}>
               <NoticeCard notice={notice} />
             </li>
           ))}
         </ul>
-      ) : (
+      ) : read.state === "empty" ? (
         <EmptyState
           title="Nothing published under this filter yet"
           body="Try the All filter, or check back after the next branch meeting."
         />
+      ) : (
+        <SectionUnavailable what="Notices" />
       )}
     </div>
   );

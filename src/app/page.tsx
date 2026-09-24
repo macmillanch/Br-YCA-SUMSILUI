@@ -3,6 +3,7 @@ import { FinanceSummary } from "@/components/site/FinanceSummary";
 import { GalleryStrip } from "@/components/site/GalleryStrip";
 import { Hero } from "@/components/site/Hero";
 import { NoticeCard } from "@/components/site/NoticeCard";
+import { SectionUnavailable } from "@/components/site/EmptyState";
 import { ProjectCard } from "@/components/site/ProjectCard";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { getHomepageContent } from "@/lib/content";
@@ -33,6 +34,10 @@ export default async function HomePage() {
                 </li>
               ))}
             </ul>
+          ) : content.noticesUnavailable ? (
+            <div className="mt-6">
+              <SectionUnavailable what="Notices" />
+            </div>
           ) : (
             <p className="mt-6 rounded-[12px] border border-dashed border-line bg-paper-alt p-6 text-sm text-ink-muted">
               No notices have been published yet.

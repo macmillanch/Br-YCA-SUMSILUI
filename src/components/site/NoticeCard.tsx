@@ -1,17 +1,8 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { shortDate } from "@/lib/dates";
 import { KIND_LABEL, type PublicNotice } from "@/lib/content";
-
-function shortDate(iso: string): string {
-  const date = new Date(`${iso}T00:00:00Z`);
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
-}
 
 export function NoticeCard({ notice }: { notice: PublicNotice }) {
   return (

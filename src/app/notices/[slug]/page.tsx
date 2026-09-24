@@ -1,15 +1,23 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
-import { getNoticeBySlug, getNotices, KIND_LABEL } from "@/lib/content";
+import { NoticeLanguages } from "@/components/site/NoticeLanguages";
+import { SectionUnavailable } from "@/components/site/EmptyState";
+import { longDate } from "@/lib/dates";
+import { KIND_LABEL } from "@/lib/labels";
+import { getNoticeBySlug, getNotices } from "@/lib/content";
 
+/**
+ * Only the addresses that exist at build time are pre-rendered. `dynamicParams`
+ * stays on — a notice published next month has no static page yet, and turning
+ * it off would 404 every notice written after the last deploy.
+ */
 export async function generateStaticParams() {
   const notices = await getNotices();
-  return notices.map((notice) => ({ slug: notice.slug }));
+  return notices.state === "ready" ? notices.items.map((notice) => ({ slug: notice.slug })) : [];
 }
 
-/** An unknown slug must 404 at the routing layer, not after a 200 has streamed. */
-export const dynamicParams = false;
+export const revalidate = 300;
 
 export async function generateMetadata({
   params,
@@ -17,8 +25,9 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const notice = await getNoticeBySlug(slug);
-  if (!notice) return { title: "Notice not found" };
+  const result = await getNoticeBySlug(slug);
+  if (result.state !== "ready") return { title: "Notice not found" };
+  const { notice } = result;
   return {
     title: notice.title,
     description: notice.excerpt,
@@ -26,36 +35,27 @@ export async function generateMetadata({
   };
 }
 
-function longDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${iso}T00:00:00Z`));
-}
-
-/**
- * Renders the safe paragraph subset. Body text arrives as plain strings and is
- * emitted through React, so nothing from the database is ever read as HTML.
- */
-function NoticeBody({ body }: { body: string }) {
-  return (
-    <div className="space-y-4 text-[15px] leading-7">
-      {body
-        .split(/\n{2,}/)
-        .filter((block) => block.trim().length > 0)
-        .map((block, index) => (
-          <p key={index}>{block}</p>
-        ))}
-    </div>
-  );
-}
-
-export default async function NoticeDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function NoticeDetailPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
   const { slug } = await params;
-  const notice = await getNoticeBySlug(slug);
-  if (!notice) notFound();
+  const result = await getNoticeBySlug(slug);
+
+  if (result.state === "missing") notFound();
+  if (result.state === "unavailable") {
+    return (
+      <div className="container-page max-w-3xl py-10">
+        <h1 className="text-3xl leading-tight">This notice</h1>
+        <div className="mt-6">
+          <SectionUnavailable what="This notice" />
+        </div>
+      </div>
+    );
+  }
+
+  const { notice } = result;
 
   return (
     <article className="container-page max-w-3xl py-10">
@@ -86,13 +86,35 @@ export default async function NoticeDetailPage({ params }: { params: Promise<{ s
       ) : null}
 
       <div className="mt-8">
-        <NoticeBody body={notice.body} />
+        <NoticeLanguages bodyEn={notice.body} translations={notice.translations} />
       </div>
 
-      <p className="mt-10 border-t border-line pt-6 text-xs text-ink-muted">
-        Attachments and the Bengali and Chakma text of this notice appear here once the branch office
-        publishes them.
-      </p>
+      {notice.attachments.length > 0 ? (
+        <section className="mt-10 border-t border-line pt-6" aria-label="Attachments">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">
+            Attached files
+          </h2>
+          <ul className="mt-3 space-y-1 text-sm">
+            {notice.attachments.map((file) => (
+              <li key={file.url}>
+                <a
+                  href={file.url}
+                  className="text-green-700 underline underline-offset-2 hover:text-green-500"
+                >
+                  {file.name}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {notice.attachments.length === 0 && notice.translations.length === 0 ? (
+        <p className="mt-10 border-t border-line pt-6 text-xs text-ink-muted">
+          Anything attached to this notice, and its Bengali or Chakma text, appears here once the
+          branch office publishes them.
+        </p>
+      ) : null}
     </article>
   );
 }

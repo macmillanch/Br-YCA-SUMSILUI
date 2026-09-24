@@ -124,7 +124,20 @@ export type NoticeDoc = {
   updatedAt: Date;
 };
 
-export const MEMBER_TYPES = ["office_bearer", "community_member"] as const;
+/**
+ * The four bodies the branch keeps a list of. The approval order that created
+ * this committee names three of them separately — office-bearers, executive
+ * members, and the advisory and auditory board — and the public page shows them
+ * as three sections, so the distinction is data rather than a position string
+ * someone has to spell the same way every time. `community_member` is the
+ * ordinary register, shown on `/members` alone.
+ */
+export const MEMBER_TYPES = [
+  "office_bearer",
+  "executive_member",
+  "advisory_board",
+  "community_member",
+] as const;
 export type MemberType = (typeof MEMBER_TYPES)[number];
 
 export type MemberDoc = {
@@ -133,6 +146,12 @@ export type MemberDoc = {
   memberType: MemberType;
   /** Free text — President, General Secretary, Executive Member… */
   position?: string;
+  /**
+   * The approval order's "F./NAMES" column. Part of the branch's official
+   * record of who holds an office, and kept out of the public payload: it is
+   * information about someone who is not themselves a member of the site.
+   */
+  fatherName?: string;
   /** e.g. `2026-2028`. */
   term?: string;
   photoUrl?: string;

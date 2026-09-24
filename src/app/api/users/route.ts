@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { fail, fromError, ok } from "@/lib/api-response";
+import { fail, fromError, ok, validationFail } from "@/lib/api-response";
 import { generateTemporaryPassword } from "@/lib/auth/password";
 import { requireRole } from "@/lib/auth/require-role";
 import { createUser, findUserByEmail, listUsers, toPublicUser } from "@/lib/users";
@@ -19,12 +19,7 @@ export async function POST(request: NextRequest) {
     // [] = super_admin only
     return await requireRole(request, [], async () => {
       const parsed = INVITE_SCHEMA.safeParse(await request.json().catch(() => null));
-      if (!parsed.success) {
-        const fieldErrors = Object.fromEntries(
-          parsed.error.issues.map((issue) => [issue.path.join(".") || "form", issue.message]),
-        );
-        return fail(400, "validation_failed", "Some fields need attention", fieldErrors);
-      }
+      if (!parsed.success) return validationFail(parsed.error);
 
       const { email, name, role, phone, password } = parsed.data;
       if (await findUserByEmail(email)) {
