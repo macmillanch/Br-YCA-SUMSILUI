@@ -74,6 +74,11 @@ export async function getSettings(): Promise<SettingsValues> {
   return { ...DEFAULT_SETTINGS, ...pickValues(doc) };
 }
 
+export async function hasSettingsDocument(): Promise<boolean> {
+  const settings = await collection<SettingsDoc>(COLLECTIONS.settings);
+  return (await settings.countDocuments({ key: "site" })) > 0;
+}
+
 export async function upsertSettings(
   values: SettingsValues,
   byId: ObjectId | null = null,

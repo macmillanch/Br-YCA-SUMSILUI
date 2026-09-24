@@ -1,22 +1,26 @@
 import "./load-env";
-import { env } from "../src/lib/env";
-import { ensureIndexes, getDb } from "../src/lib/db";
-import { COLLECTIONS } from "../src/lib/index-specs";
-import { createUser, findUserByEmail } from "../src/lib/users";
-import type { Role } from "../src/lib/types";
 
-export const TEST_USERS: readonly { email: string; name: string; role: Role }[] = [
+// Assign before src/lib/env is evaluated: this script always targets the test
+// database, so `npm run seed:test` needs no shell-specific env prefix, and the
+// production database can never be truncated by mistake.
+process.env.MONGODB_DB = process.env.MONGODB_DB_TEST ?? "yca_sumsilui_test";
+
+const { env } = await import("../src/lib/env");
+const { ensureIndexes, getDb } = await import("../src/lib/db");
+const { COLLECTIONS } = await import("../src/lib/index-specs");
+const { createUser, findUserByEmail } = await import("../src/lib/users");
+const TEST_PASSWORD = "branch-test-password";
+
+const TEST_USERS = [
   { email: "admin@test.yca.local", name: "Test Admin", role: "super_admin" },
   { email: "editor@test.yca.local", name: "Test Editor", role: "editor" },
   { email: "treasurer@test.yca.local", name: "Test Treasurer", role: "treasurer" },
-];
-
-export const TEST_PASSWORD = "branch-test-password";
+] as const;
 
 async function main() {
   if (env.MONGODB_DB !== "yca_sumsilui_test" && !process.env.ALLOW_ANY_DB) {
     throw new Error(
-      `refusing to truncate "${env.MONGODB_DB}" — point MONGODB_DB at yca_sumsilui_test`,
+      `refusing to truncate "${env.MONGODB_DB}" — set MONGODB_DB_TEST to a scratch database`,
     );
   }
 
