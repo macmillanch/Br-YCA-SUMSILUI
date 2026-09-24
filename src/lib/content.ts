@@ -9,6 +9,7 @@
  */
 
 import { getSettings, type SettingsValues } from "@/lib/settings";
+import { galleryAlbums, recentGalleryItems, type GalleryAlbum, type PublicGalleryItem } from "@/lib/gallery";
 import { listMembers, toDirectoryRow, toPublicMember } from "@/lib/members";
 import { getPublishedNoticeBySlug, listPublishedNotices } from "@/lib/notices";
 import { publicProjectBySlug, publicProjects } from "@/lib/projects";
@@ -99,11 +100,12 @@ export type FinanceSnapshot = {
   closingPaise: number;
 };
 
+/** One picture on the front-page strip, in the size the store serves it. */
 export type GalleryPhoto = {
   url: string;
+  thumbUrl: string;
   alt: string;
-  width: number;
-  height: number;
+  caption: string;
 };
 
 export type ContactDetails = {
@@ -125,6 +127,7 @@ export type HomepageContent = {
   projectsUnavailable: boolean;
   finance: FinanceSnapshot | null;
   photos: readonly GalleryPhoto[];
+  photosUnavailable: boolean;
   contact: ContactDetails;
 };
 
@@ -221,11 +224,12 @@ export async function getBankDetails(): Promise<BankDetails> {
  * treasurer closes a year.
  */
 export async function getHomepageContent(): Promise<HomepageContent> {
-  const [notices, works, finance, settings] = await Promise.all([
+  const [notices, works, finance, settings, photos] = await Promise.all([
     getNotices(),
     getWorks("ongoing"),
     getFinanceSummary(),
     loadSettingsOrNull(),
+    getGalleryStrip(),
   ]);
 
   return {
@@ -235,9 +239,8 @@ export async function getHomepageContent(): Promise<HomepageContent> {
     projects: works.state === "ready" ? works.items.slice(0, 3) : [],
     projectsUnavailable: works.state === "unavailable",
     finance,
-    // The gallery's own screen, and the photographs behind it, arrive with the
-    // upload task. Until then there is no photo to show, and the strip says so.
-    photos: [],
+    photos: photos.state === "ready" ? photos.items : [],
+    photosUnavailable: photos.state === "unavailable",
     contact: settings ? contactFromSettings(settings) : CONTACT_PLACEHOLDER,
   };
 }
@@ -366,6 +369,40 @@ export async function getWorks(status?: ProjectStatus): Promise<PublicRead<Publi
     return { state: "unavailable" };
   }
   return works.length > 0 ? { state: "ready", items: works } : { state: "empty" };
+}
+
+/**
+ * The gallery as the branch arranged it: albums, each with its pictures in the
+ * order they were numbered. Nothing here guesses at a picture — an album with no
+ * words about it could not be published in the first place.
+ */
+export async function getGalleryAlbums(): Promise<PublicRead<GalleryAlbum>> {
+  let albums: GalleryAlbum[];
+  try {
+    albums = await galleryAlbums();
+  } catch (error) {
+    console.error("the gallery is unavailable", error);
+    return { state: "unavailable" };
+  }
+  return albums.length > 0 ? { state: "ready", items: albums } : { state: "empty" };
+}
+
+function toGalleryPhoto(item: PublicGalleryItem): GalleryPhoto {
+  return { url: item.imageUrl, thumbUrl: item.thumbUrl, alt: item.alt, caption: item.caption };
+}
+
+/** The most recent few pictures, for the strip on the front page. */
+export async function getGalleryStrip(limit = 6): Promise<PublicRead<GalleryPhoto>> {
+  let items: PublicGalleryItem[];
+  try {
+    items = await recentGalleryItems(limit);
+  } catch (error) {
+    console.error("the photo strip is unavailable", error);
+    return { state: "unavailable" };
+  }
+  return items.length > 0
+    ? { state: "ready", items: items.map(toGalleryPhoto) }
+    : { state: "empty" };
 }
 
 export async function getWorkBySlug(slug: string): Promise<WorkDetail> {

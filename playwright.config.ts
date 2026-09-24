@@ -29,6 +29,12 @@ export default defineConfig({
     env: {
       MONGODB_DB: process.env.MONGODB_DB_TEST ?? "yca_sumsilui_test",
       BCRYPT_ROUNDS: "4",
+      // The suite proves what the upload screen does *without* an image store, so
+      // it must not depend on whether this machine's .env.local has keys in it.
+      // A real upload is exercised once the branch's own credentials exist.
+      CLOUDINARY_CLOUD_NAME: "",
+      CLOUDINARY_API_KEY: "",
+      CLOUDINARY_API_SECRET: "",
     },
   },
 });

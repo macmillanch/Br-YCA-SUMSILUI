@@ -92,7 +92,7 @@ export default async function HomePage() {
             action={{ href: "/gallery", label: "View gallery" }}
           />
           <div className="mt-6">
-            <GalleryStrip photos={content.photos} />
+            <GalleryStrip photos={content.photos} unavailable={content.photosUnavailable} />
           </div>
         </section>
 

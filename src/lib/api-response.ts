@@ -5,7 +5,7 @@ export type FieldErrors = Record<string, string>;
 
 export class ApiError extends Error {
   constructor(
-    readonly status: 400 | 401 | 403 | 404 | 409 | 429 | 500,
+    readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500 | 503,
     readonly code: string,
     message: string,
     readonly fieldErrors?: FieldErrors,

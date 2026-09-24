@@ -29,3 +29,13 @@ export function invalidateWorks(slug?: string): void {
   revalidatePath("/");
   if (slug) revalidatePath(`/works/${slug}`);
 }
+
+/**
+ * A picture appears in its album on the gallery page and in the strip on the
+ * front page, so both clear together. The album is not a page of its own, which
+ * is why one path covers the whole gallery.
+ */
+export function invalidateGallery(): void {
+  revalidatePath("/gallery");
+  revalidatePath("/");
+}
