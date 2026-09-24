@@ -8,8 +8,10 @@
 
 import { getSettings, type SettingsValues } from "@/lib/settings";
 import { fiscalYearFromLabel } from "@/lib/fiscal-year";
+import type { NoticeKind, ProjectStatus } from "@/lib/types";
 
-export type NoticeKind = "notice" | "press_release" | "announcement";
+export type { NoticeKind, ProjectStatus };
+
 export type PublicNotice = {
   slug: string;
   kind: NoticeKind;
@@ -22,8 +24,6 @@ export type PublicNotice = {
   hasChakma: boolean;
   hasBangla: boolean;
 };
-
-export type ProjectStatus = "ongoing" | "proposed" | "completed" | "deferred";
 
 export type PublicProject = {
   slug: string;

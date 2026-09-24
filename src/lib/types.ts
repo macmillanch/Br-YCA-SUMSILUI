@@ -83,3 +83,118 @@ export const ROLE_LABEL: Record<Role, string> = {
   editor: "Editor",
   treasurer: "Treasurer",
 };
+
+/* ------------------------------------------------------------------ content */
+
+/**
+ * Dates that a human reads as a calendar day — event dates, start dates — are
+ * stored as `YYYY-MM-DD` strings, never as `Date`. A `Date` is an instant, and
+ * an instant stored from IST reads back as the previous day in UTC. Timestamps
+ * that only the machine compares (`createdAt`) stay `Date`.
+ */
+
+export const NOTICE_KINDS = ["notice", "press_release", "announcement"] as const;
+export type NoticeKind = (typeof NOTICE_KINDS)[number];
+export type NoticeStatus = "draft" | "published";
+
+export type NoticeAttachment = { name: string; url: string; mimeType: string; size: number };
+
+export type NoticeDoc = {
+  _id: ObjectId;
+  slug: string;
+  kind: NoticeKind;
+  status: NoticeStatus;
+  titleEn: string;
+  bodyEn: string;
+  /**
+   * Bengali and Chakma (Chakma script) versions are optional. The public
+   * language toggle only offers the languages that actually have text, so a
+   * notice never presents an empty panel.
+   */
+  titleBn?: string;
+  bodyBn?: string;
+  titleCdp?: string;
+  bodyCdp?: string;
+  publishedAt: Date | null;
+  eventDate?: string;
+  venue?: string;
+  attachments: NoticeAttachment[];
+  authorId: ObjectId | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const MEMBER_TYPES = ["office_bearer", "community_member"] as const;
+export type MemberType = (typeof MEMBER_TYPES)[number];
+
+export type MemberDoc = {
+  _id: ObjectId;
+  name: string;
+  memberType: MemberType;
+  /** Free text — President, General Secretary, Executive Member… */
+  position?: string;
+  /** e.g. `2026-2028`. */
+  term?: string;
+  photoUrl?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  ward?: string;
+  order: number;
+  /** False moves the person to "Past office-bearers". */
+  current: boolean;
+  /**
+   * Off by default, and enforced where the payload is built rather than in the
+   * UI: a number typed for the office-bearers' own use must not reach the
+   * public page because someone forgot a checkbox in a form.
+   */
+  showContactPublicly: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const PROJECT_STATUSES = ["proposed", "ongoing", "completed", "deferred"] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
+export type ProjectDoc = {
+  _id: ObjectId;
+  slug: string;
+  title: string;
+  description: string;
+  status: ProjectStatus;
+  startDate?: string;
+  targetDate?: string;
+  completedDate?: string;
+  sanctionedAmountPaise: number;
+  beneficiaries: number;
+  location?: string;
+  coverImageUrl?: string;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type ProjectUpdateDoc = {
+  _id: ObjectId;
+  projectId: ObjectId;
+  date: string;
+  text: string;
+  photos: string[];
+  percentComplete: number;
+  createdAt: Date;
+};
+
+export type GalleryItemDoc = {
+  _id: ObjectId;
+  album: string;
+  caption: string;
+  /** Required: the grid is read aloud, and a photo of a meeting says nothing. */
+  alt: string;
+  imageUrl: string;
+  thumbUrl: string;
+  takenAt?: string;
+  eventId: ObjectId | null;
+  order: number;
+  uploadedById: ObjectId | null;
+  createdAt: Date;
+};
