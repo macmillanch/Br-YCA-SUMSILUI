@@ -4,6 +4,13 @@ import "./globals.css";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { SiteFooter } from "@/components/site/SiteFooter";
 
+/**
+ * The footer reads the branch's saved settings, so every public page touches
+ * MongoDB. Five minutes keeps a saved phone number live without a redeploy
+ * and keeps a notice from going stale for long.
+ */
+export const revalidate = 300;
+
 const fraunces = Fraunces({
   subsets: ["latin"],
   variable: "--font-fraunces",
