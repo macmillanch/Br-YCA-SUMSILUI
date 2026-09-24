@@ -10,3 +10,7 @@ out/
 next-env.d.ts
 *.log
 .DS_Store
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
