@@ -304,8 +304,9 @@ rendered server-side and sanitised to an allowlist of tags and attributes. Raw H
 database is never injected.
 
 **Secrets:** `MONGODB_URI`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`,
-`CLOUDINARY_API_SECRET`, `SESSION_SECRET` exist only as Vercel project env vars and in a local
-`.env.local` that is gitignored. Nothing prefixed `NEXT_PUBLIC_` may contain a secret.
+`CLOUDINARY_API_SECRET` exist only as Vercel project env vars and in a local
+`.env.local` that is gitignored. Nothing prefixed `NEXT_PUBLIC_` may contain a secret. Session
+tokens are opaque random values stored only as their SHA-256 hash, so no signing secret is needed.
 
 ## 9. Error handling and resilience
 
@@ -362,7 +363,7 @@ Cloudinary account, a Vercel account.
 
 ```
 npm install
-cp .env.example .env.local     # fill in MONGODB_URI, CLOUDINARY_*, SESSION_SECRET
+cp .env.example .env.local     # fill in MONGODB_URI, CLOUDINARY_*, SEED_ADMIN_*
 npm run seed                   # creates indexes, settings doc, first super_admin
 npm run dev
 ```
