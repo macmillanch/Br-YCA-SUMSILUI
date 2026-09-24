@@ -22,15 +22,10 @@ export function Hero({ introduction, isSample }: { introduction: string; isSampl
           </h1>
           <p className="mt-5 max-w-prose text-[15px] leading-7 text-green-100">{introduction}</p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <Button href="/notices" size="lg" className="bg-white text-green-900 hover:bg-green-100">
+            <Button href="/notices" size="lg" variant="inverse">
               Read latest notices
             </Button>
-            <Button
-              href="/works"
-              size="lg"
-              variant="ghost"
-              className="border-green-100/50 bg-transparent text-white hover:bg-white/10"
-            >
+            <Button href="/works" size="lg" variant="ghostInverse">
               See our works
             </Button>
           </div>

@@ -41,3 +41,22 @@ test("a saved Facebook link is a real anchor, not inert text", async ({ page }) 
   await page.goto("/contact");
   await expect(page.locator('footer a[href="https://facebook.com/yca.sumsilui"]')).toBeVisible();
 });
+
+test("the donate page and homepage read the saved account details", async ({ page }) => {
+  await signInAsAdmin(page);
+  await page.goto("/admin/settings");
+  await page.getByLabel(/^bank name$/i).fill("Central Bank of India");
+  await page.getByLabel(/^account number$/i).fill("0042198765");
+  await page.getByRole("button", { name: /save settings/i }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+
+  await page.goto("/donate");
+  await expect(page.getByText("Central Bank of India")).toBeVisible();
+  await expect(page.getByText("0042198765")).toBeVisible();
+  // The fields nobody has typed stay marked unpublished rather than filled with
+  // something plausible — an invented account number is unforgivable.
+  await expect(page.getByText("to be published by the Treasurer")).toHaveCount(3);
+
+  await page.goto("/");
+  await expect(page.locator("main address")).toContainText("9138765432");
+});

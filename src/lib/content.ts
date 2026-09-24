@@ -6,6 +6,7 @@
  * not change when the data starts coming from the database.
  */
 
+import { getSettings, type SettingsValues } from "@/lib/settings";
 import { fiscalYearFromLabel } from "@/lib/fiscal-year";
 
 export type NoticeKind = "notice" | "press_release" | "announcement";
@@ -187,12 +188,82 @@ const SAMPLE_PROJECTS: readonly PublicProject[] = [
 ];
 
 export const CONTACT_PLACEHOLDER: ContactDetails = {
-  addressLines: ["Sumsilui Branch", "Mizoram — PIN code to be confirmed"],
+  addressLines: ["Mizoram — PIN code to be confirmed"],
   phone: null,
   email: null,
   officeHours: null,
   mapUrl: null,
 };
+
+/**
+ * The branch's saved details, mapped onto what the public pages show. Blank
+ * stays blank: an address no one has typed in renders as "not published yet",
+ * never as a plausible-looking guess.
+ */
+function contactFromSettings(settings: SettingsValues): ContactDetails {
+  const addressLines = [settings.addressLine, settings.district, settings.state].filter(
+    (line) => line.length > 0,
+  );
+  return {
+    addressLines: addressLines.length > 0 ? addressLines : CONTACT_PLACEHOLDER.addressLines,
+    phone: settings.phone || null,
+    email: settings.email || null,
+    officeHours: null,
+    mapUrl: null,
+  };
+}
+
+/**
+ * A settings read that fails must not take the page down with it — the footer
+ * already says the details are unavailable, so the section falls back to blank.
+ */
+async function loadContact(): Promise<ContactDetails> {
+  try {
+    return contactFromSettings(await getSettings());
+  } catch (error) {
+    console.error("contact details unavailable", error);
+    return CONTACT_PLACEHOLDER;
+  }
+}
+
+export type BankDetails = {
+  accountName: string | null;
+  bankName: string | null;
+  bankBranch: string | null;
+  accountNumber: string | null;
+  ifsc: string | null;
+  upiId: string | null;
+};
+
+const BLANK_BANK: BankDetails = {
+  accountName: null,
+  bankName: null,
+  bankBranch: null,
+  accountNumber: null,
+  ifsc: null,
+  upiId: null,
+};
+
+/**
+ * The donate page promises these came from the Treasurer and not from the
+ * template, so every field starts null and only a saved value can fill it.
+ */
+export async function getBankDetails(): Promise<BankDetails> {
+  try {
+    const settings = await getSettings();
+    return {
+      accountName: settings.branchName || null,
+      bankName: settings.bankName || null,
+      bankBranch: settings.bankBranch || null,
+      accountNumber: settings.accountNumber || null,
+      ifsc: settings.ifsc || null,
+      upiId: settings.upiId || null,
+    };
+  } catch (error) {
+    console.error("bank details unavailable", error);
+    return BLANK_BANK;
+  }
+}
 
 /**
  * Placeholder layout content. Contact details deliberately stay null so an
@@ -216,7 +287,7 @@ const SAMPLE_CONTENT: HomepageContent = {
 };
 
 export async function getHomepageContent(): Promise<HomepageContent> {
-  return SAMPLE_CONTENT;
+  return { ...SAMPLE_CONTENT, contact: await loadContact() };
 }
 
 export async function getNotices(kind?: NoticeKind): Promise<readonly PublicNotice[]> {
@@ -238,7 +309,7 @@ export async function getProjectBySlug(slug: string): Promise<PublicProject | nu
 }
 
 export async function getContactDetails(): Promise<ContactDetails> {
-  return SAMPLE_CONTENT.contact;
+  return loadContact();
 }
 
 export type FinanceYearOption = { label: string; startDate: string; endDate: string };

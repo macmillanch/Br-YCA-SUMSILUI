@@ -1,11 +1,17 @@
 import Link from "next/link";
 
-export type ButtonVariant = "primary" | "accent" | "ghost";
+export type ButtonVariant = "primary" | "accent" | "ghost" | "inverse" | "ghostInverse";
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary: "bg-green-700 text-white hover:bg-green-500",
   accent: "bg-red-700 text-white hover:bg-red-700/90",
   ghost: "border border-line bg-paper text-green-900 hover:bg-green-100",
+  // For buttons sitting on the dark green field. Overriding `primary` or `ghost`
+  // with classNames does not work reliably: both sets of utilities end up in the
+  // stylesheet, and which one wins is Tailwind's output order, not the class
+  // attribute — which is how a white button with white text reached a screenshot.
+  inverse: "bg-white text-green-900 hover:bg-green-100",
+  ghostInverse: "border border-green-100/50 bg-transparent text-white hover:bg-white/10",
 };
 
 const SIZE = {
