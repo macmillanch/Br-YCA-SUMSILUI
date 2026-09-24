@@ -1,3 +1,5 @@
+import type { Role } from "@/lib/types";
+
 export type NavItem = { href: string; label: string };
 
 export const PUBLIC_NAV: readonly NavItem[] = [
@@ -20,4 +22,48 @@ export const DONATE_NAV: NavItem = { href: "/donate", label: "Donate" };
 export function isActive(item: NavItem, pathname: string): boolean {
   if (item.href === "/") return pathname === "/";
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+export type AdminNavItem = {
+  href: string;
+  label: string;
+  roles: readonly Role[];
+  availableInPlan: number;
+};
+
+/**
+ * The one source of truth for the admin sidebar. `roles: []` means super-admin
+ * only, matching the empty-allowlist convention in `canAccess`, so nobody has
+ * to remember which file reads an empty list the other way. `availableInPlan`
+ * keeps the roadmap in the code: an editor's sidebar grows as each plan lands
+ * without anyone re-deciding who may see what.
+ */
+export const NAV_ITEMS: readonly AdminNavItem[] = [
+  { href: "/admin", label: "Dashboard", roles: ["editor", "treasurer"], availableInPlan: 1 },
+  {
+    href: "/admin/notices",
+    label: "Notices & press releases",
+    roles: ["editor", "treasurer"],
+    availableInPlan: 2,
+  },
+  { href: "/admin/members", label: "Members", roles: ["editor", "treasurer"], availableInPlan: 2 },
+  {
+    href: "/admin/works",
+    label: "Works & progress",
+    roles: ["editor", "treasurer"],
+    availableInPlan: 2,
+  },
+  { href: "/admin/gallery", label: "Gallery", roles: ["editor", "treasurer"], availableInPlan: 2 },
+  { href: "/admin/finance", label: "Finance", roles: ["treasurer"], availableInPlan: 3 },
+  { href: "/admin/donations", label: "Donations", roles: ["treasurer"], availableInPlan: 3 },
+  { href: "/admin/settings", label: "Settings", roles: [], availableInPlan: 1 },
+  { href: "/admin/users", label: "Users", roles: [], availableInPlan: 1 },
+];
+
+export function canSee(role: Role, allowed: readonly Role[]): boolean {
+  return role === "super_admin" || allowed.includes(role);
+}
+
+export function visibleNav(role: Role): AdminNavItem[] {
+  return NAV_ITEMS.filter((item) => item.availableInPlan <= 1 && canSee(role, item.roles));
 }
