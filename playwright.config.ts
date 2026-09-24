@@ -9,6 +9,10 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3000",
     trace: "retain-on-failure",
+    // Unset, Playwright downloads its own pinned Chromium. Set
+    // PLAYWRIGHT_CHANNEL=chrome locally to drive the installed browser
+    // instead. CI leaves it unset so the pinned build stays authoritative.
+    channel: process.env.PLAYWRIGHT_CHANNEL,
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {

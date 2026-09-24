@@ -21,7 +21,10 @@ test("a correct password reaches the dashboard and a wrong one does not", async 
   await page.getByLabel(/email/i).fill(ADMIN.email);
   await page.getByLabel(/password/i).fill("definitely-not-the-password");
   await page.getByRole("button", { name: /sign in/i }).click();
-  await expect(page.getByRole("alert")).toContainText("Email or password is incorrect");
+  // Next's route announcer is also role="alert", so scope to the form's own.
+  await expect(
+    page.getByRole("alert").filter({ hasText: /incorrect/i }),
+  ).toContainText("Email or password is incorrect");
   await expect(page).toHaveURL(/\/login$/);
 });
 
