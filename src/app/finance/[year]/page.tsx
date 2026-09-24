@@ -116,7 +116,7 @@ export default async function FinanceYearPage({ params }: { params: Promise<{ ye
       {project ? (
         <EmptyState
           title="Entry-by-entry ledger not published yet"
-          body={`The individual vouchers behind the ${year} figures are being entered against each work — for example ${project.title}, where ${formatPaise(project.spentPaise)} of ${formatPaise(project.sanctionedPaise)} has been drawn down so far. Once the treasurer publishes the year, every voucher appears here with its date, voucher number, description, party and amount, and the whole ledger can be downloaded as a spreadsheet.`}
+          body={`The individual vouchers behind the ${year} figures are being entered work by work — for example ${project.title}. Once the treasurer publishes the year, every voucher appears here with its date, voucher number, description, party and amount, and the whole ledger can be downloaded as a spreadsheet.`}
           action={{ href: "/admin", label: "Office-bearers: sign in to enter vouchers" }}
         />
       ) : null}

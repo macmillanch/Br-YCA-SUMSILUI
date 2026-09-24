@@ -18,3 +18,14 @@ export function invalidateMembers(): void {
   revalidatePath("/executive-members");
   revalidatePath("/members");
 }
+
+/**
+ * A progress report changes two pages at once: the work's own timeline and the
+ * card on the works list, whose bar reads the latest report. The homepage shows
+ * the same cards, so it goes too.
+ */
+export function invalidateWorks(slug?: string): void {
+  revalidatePath("/works");
+  revalidatePath("/");
+  if (slug) revalidatePath(`/works/${slug}`);
+}

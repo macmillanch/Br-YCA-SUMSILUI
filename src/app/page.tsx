@@ -50,16 +50,26 @@ export default async function HomePage() {
             id="works-heading"
             eyebrow="What has been done"
             title="Ongoing works"
-            description="Progress is calculated from the accounts themselves, not entered by hand."
+            description="Each work shows what was sanctioned for it and the progress the branch last reported from the site."
             action={{ href: "/works", label: "View all works" }}
           />
-          <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {content.projects.map((project) => (
-              <li key={project.slug}>
-                <ProjectCard project={project} />
-              </li>
-            ))}
-          </ul>
+          {content.projects.length > 0 ? (
+            <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {content.projects.map((project) => (
+                <li key={project.slug}>
+                  <ProjectCard project={project} />
+                </li>
+              ))}
+            </ul>
+          ) : content.projectsUnavailable ? (
+            <div className="mt-6">
+              <SectionUnavailable what="Works" />
+            </div>
+          ) : (
+            <p className="mt-6 rounded-[12px] border border-dashed border-line bg-paper-alt p-6 text-sm text-ink-muted">
+              No work is under way on this site yet.
+            </p>
+          )}
         </section>
 
         <section aria-labelledby="finance-heading" className="rounded-[12px] bg-paper-alt p-6 md:p-8">

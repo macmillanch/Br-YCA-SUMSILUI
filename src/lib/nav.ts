@@ -51,7 +51,7 @@ export const NAV_ITEMS: readonly AdminNavItem[] = [
     roles: ["editor", "treasurer"],
     ready: true,
   },
-  { href: "/admin/works", label: "Works & progress", roles: ["editor", "treasurer"], ready: false },
+  { href: "/admin/works", label: "Works & progress", roles: ["editor", "treasurer"], ready: true },
   { href: "/admin/gallery", label: "Gallery", roles: ["editor", "treasurer"], ready: false },
   { href: "/admin/finance", label: "Finance", roles: ["treasurer"], ready: false },
   { href: "/admin/donations", label: "Donations", roles: ["treasurer"], ready: false },

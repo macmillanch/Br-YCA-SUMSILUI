@@ -10,6 +10,7 @@ import { getSettings, type SettingsValues } from "@/lib/settings";
 import { fiscalYearFromLabel } from "@/lib/fiscal-year";
 import { listMembers, toDirectoryRow, toPublicMember } from "@/lib/members";
 import { getPublishedNoticeBySlug, listPublishedNotices } from "@/lib/notices";
+import { publicProjectBySlug, publicProjects } from "@/lib/projects";
 import type { MemberType, NoticeKind, ProjectStatus } from "@/lib/types";
 
 export type { MemberType, NoticeKind, ProjectStatus };
@@ -52,29 +53,42 @@ export type NoticeDetail =
   | { state: "missing" }
   | { state: "unavailable" };
 
+/**
+ * One work, as the site shows it. There is deliberately no spend figure here:
+ * what has been drawn against a work comes out of the ledger in Plan 3, and a
+ * card that had room for a typed amount would be a card where an invented one
+ * could live. The percentage is the branch's own latest dated report, and null
+ * until such a report exists — which the card renders as "not reported yet",
+ * never as 0%.
+ */
 export type PublicProject = {
   slug: string;
   title: string;
   description: string;
-  location: string;
+  location: string | null;
   status: ProjectStatus;
   sanctionedPaise: number;
-  /** Always summed from the transaction ledger. */
-  spentPaise: number;
+  beneficiaries: number;
+  startDate: string | null;
+  targetDate: string | null;
+  completedDate: string | null;
+  percentComplete: number | null;
+  /** The date of the report that percentage came from; null when there is none. */
+  reportedOn: string | null;
 };
 
-/**
- * Progress is derived, never stored. Spending a third of the sanctioned amount
- * is a third of the bar whatever the record says elsewhere.
- */
-export function progressPercentOf(
-  project: Pick<PublicProject, "sanctionedPaise" | "spentPaise" | "status">,
-): number {
-  if (project.status === "completed") return 100;
-  if (project.sanctionedPaise <= 0) return 0;
-  const ratio = project.spentPaise / project.sanctionedPaise;
-  return Math.max(0, Math.min(100, Math.round(ratio * 100)));
-}
+/** One dated line on the progress timeline, newest first. */
+export type PublicProjectUpdate = {
+  date: string;
+  text: string;
+  percentComplete: number;
+  photos: string[];
+};
+
+export type WorkDetail =
+  | { state: "ready"; project: PublicProject; updates: PublicProjectUpdate[] }
+  | { state: "missing" }
+  | { state: "unavailable" };
 
 export type FinanceSnapshot = {
   yearLabel: string;
@@ -104,15 +118,17 @@ export type HomepageContent = {
   notices: readonly PublicNotice[];
   /** True when the notices could not be read at all — not merely none yet. */
   noticesUnavailable: boolean;
+  /** The works the branch has under way, read from the database like the notices. */
   projects: readonly PublicProject[];
+  projectsUnavailable: boolean;
   finance: FinanceSnapshot | null;
   photos: readonly GalleryPhoto[];
   contact: ContactDetails;
   /**
-   * True while the branch has supplied no real records. Every section renders a
-   * DEMO marker from this flag. It still covers the whole homepage while works
-   * and finance come from Plan 2/3, so it stays on until Task 6 retires the
-   * sample data wholesale — demo text can never quietly become a public record.
+   * True while the branch has supplied no real introduction and no real
+   * accounts. Every section renders a DEMO marker from this flag, and it still
+   * covers the finance block until Plan 3 fills it — demo figures can never
+   * quietly become a public record.
    */
   isSample: boolean;
 };
@@ -170,39 +186,6 @@ const SAMPLE_NOTICES: readonly PublicNotice[] = [
     body: "A delegation of the branch office-bearers met the local member and handed over a memorandum on the condition of the approach road.\n\nThe memorandum records that a stretch of the road has remained unrepaired through two monsoons, that school vehicles cannot use it in heavy rain, and that residents have collected signatures in support.\n\nThe association requests a written reply and a target date for the repair.",
     translations: [],
     attachments: [],
-  },
-];
-
-const SAMPLE_PROJECTS: readonly PublicProject[] = [
-  {
-    slug: "sample-community-water-tank",
-    title: "Overhead water tank for the upper lines",
-    description:
-      "Storage tank and stand-pipe so that households on the higher ground are not dependent on the morning supply alone.",
-    location: "Sumsilui, upper locality",
-    status: "ongoing",
-    sanctionedPaise: 25000000,
-    spentPaise: 9750000,
-  },
-  {
-    slug: "sample-student-reading-room",
-    title: "Student reading room and study light",
-    description:
-      "A quiet room with seating for twenty students, a reading lamp at each place, and a shelf of reference books.",
-    location: "Branch office premises",
-    status: "proposed",
-    sanctionedPaise: 8000000,
-    spentPaise: 0,
-  },
-  {
-    slug: "sample-drain-repair",
-    title: "Repair of the roadside drain below the church",
-    description:
-      "Nine metres of collapsed drain rebuilt with new slabs, so that stagnant water does not collect before the monsoon.",
-    location: "Sumsilui, below the church",
-    status: "completed",
-    sanctionedPaise: 4500000,
-    spentPaise: 4410000,
   },
 ];
 
@@ -285,15 +268,15 @@ export async function getBankDetails(): Promise<BankDetails> {
 }
 
 /**
- * Placeholder layout content. Contact details deliberately stay null so an
- * invented phone number or address can never reach a visitor.
+ * The parts of the homepage the branch has not supplied yet: the introduction
+ * and the finance block. Works and notices come from the database, so nothing
+ * here can reach a visitor as a record of what the branch has done.
  */
-const SAMPLE_CONTENT: HomepageContent = {
+const SAMPLE_CONTENT: Omit<HomepageContent, "projects" | "projectsUnavailable"> = {
   introduction:
     "Young Chakma Association, Sumsilui Branch serves the Chakma community of Sumsilui in Mizoram. The branch carries out social work, keeps its accounts open for members to read, and publishes its notices here.",
   notices: SAMPLE_NOTICES,
   noticesUnavailable: false,
-  projects: SAMPLE_PROJECTS,
   finance: {
     yearLabel: "2026-27",
     openingPaise: 18500000,
@@ -308,10 +291,13 @@ const SAMPLE_CONTENT: HomepageContent = {
 
 export async function getHomepageContent(): Promise<HomepageContent> {
   const notices = await getNotices();
+  const works = await getWorks("ongoing");
   return {
     ...SAMPLE_CONTENT,
     notices: notices.state === "ready" ? notices.items : [],
     noticesUnavailable: notices.state === "unavailable",
+    projects: works.state === "ready" ? works.items.slice(0, 3) : [],
+    projectsUnavailable: works.state === "unavailable",
     contact: await loadContact(),
   };
 }
@@ -435,12 +421,33 @@ export async function getMemberDirectory(): Promise<PublicRead<DirectoryRow>> {
   }
 }
 
-export async function getProjects(status?: ProjectStatus): Promise<readonly PublicProject[]> {  const all = SAMPLE_CONTENT.projects;
-  return status ? all.filter((project) => project.status === status) : all;
+/**
+ * The works, in the branch's own order, each carrying the percentage from its
+ * latest dated report. An unread database is reported as unavailable rather than
+ * as an empty page: "nothing published yet" is a statement about the branch's
+ * record, and a timeout does not license us to make it.
+ */
+export async function getWorks(status?: ProjectStatus): Promise<PublicRead<PublicProject>> {
+  let works: PublicProject[];
+  try {
+    works = await publicProjects(status);
+  } catch (error) {
+    console.error("works are unavailable", error);
+    return { state: "unavailable" };
+  }
+  return works.length > 0 ? { state: "ready", items: works } : { state: "empty" };
 }
 
-export async function getProjectBySlug(slug: string): Promise<PublicProject | null> {
-  return SAMPLE_CONTENT.projects.find((project) => project.slug === slug) ?? null;
+export async function getWorkBySlug(slug: string): Promise<WorkDetail> {
+  let detail: { project: PublicProject; updates: PublicProjectUpdate[] } | null;
+  try {
+    detail = await publicProjectBySlug(slug);
+  } catch (error) {
+    console.error("this work is unavailable", error);
+    return { state: "unavailable" };
+  }
+  if (!detail) return { state: "missing" };
+  return { state: "ready", project: detail.project, updates: detail.updates };
 }
 
 export async function getContactDetails(): Promise<ContactDetails> {

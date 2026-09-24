@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
-import {
-  getProjectBySlug,
-  getProjects,
-  progressPercentOf,
-  STATUS_LABEL,
-} from "@/lib/content";
+import { SectionUnavailable } from "@/components/site/EmptyState";
+import { longDate } from "@/lib/dates";
+import { getWorkBySlug, getWorks, STATUS_LABEL } from "@/lib/content";
 import { formatPaise } from "@/lib/money";
 
+/**
+ * Only the addresses that exist at build time are pre-rendered. `dynamicParams`
+ * stays on — a work recorded next month has no static page yet, and turning it
+ * off would 404 every work added after the last deploy.
+ */
 export async function generateStaticParams() {
-  const projects = await getProjects();
-  return projects.map((project) => ({ slug: project.slug }));
+  const works = await getWorks();
+  return works.state === "ready" ? works.items.map((project) => ({ slug: project.slug })) : [];
 }
 
-/** An unknown slug must 404 at the routing layer, not after a 200 has streamed. */
-export const dynamicParams = false;
+export const revalidate = 300;
 
 export async function generateMetadata({
   params,
@@ -23,18 +24,28 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const project = await getProjectBySlug(slug);
-  if (!project) return { title: "Work not found" };
-  return { title: project.title, description: project.description };
+  const result = await getWorkBySlug(slug);
+  if (result.state !== "ready") return { title: "Work not found" };
+  return { title: result.project.title, description: result.project.description };
 }
 
 export default async function WorkDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const project = await getProjectBySlug(slug);
-  if (!project) notFound();
+  const result = await getWorkBySlug(slug);
 
-  const percent = progressPercentOf(project);
-  const remaining = project.sanctionedPaise - project.spentPaise;
+  if (result.state === "missing") notFound();
+  if (result.state === "unavailable") {
+    return (
+      <div className="container-page max-w-3xl py-10">
+        <h1 className="text-3xl leading-tight">This work</h1>
+        <div className="mt-6">
+          <SectionUnavailable what="This work" />
+        </div>
+      </div>
+    );
+  }
+
+  const { project, updates } = result;
 
   return (
     <article className="container-page max-w-3xl py-10">
@@ -42,56 +53,122 @@ export default async function WorkDetailPage({ params }: { params: Promise<{ slu
         <Badge tone={project.status === "deferred" ? "red" : "green"}>
           {STATUS_LABEL[project.status]}
         </Badge>
-        <span className="text-sm text-ink-muted">{project.location}</span>
+        {project.location ? <span className="text-sm text-ink-muted">{project.location}</span> : null}
       </div>
 
       <h1 className="mt-4 text-3xl leading-tight sm:text-[38px]">{project.title}</h1>
       <p className="mt-4 text-[15px] leading-7">{project.description}</p>
 
+      {project.startDate || project.targetDate || project.completedDate ? (
+        <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-muted">
+          {project.startDate ? <li>Started {longDate(project.startDate)}</li> : null}
+          {project.targetDate ? <li>Target {longDate(project.targetDate)}</li> : null}
+          {project.completedDate ? <li>Completed {longDate(project.completedDate)}</li> : null}
+          {project.beneficiaries > 0 ? (
+            <li>{project.beneficiaries} beneficiaries</li>
+          ) : null}
+        </ul>
+      ) : null}
+
       <div className="mt-8">
-        <div className="flex items-baseline justify-between text-sm">
-          <span className="text-ink-muted">Progress from the ledger</span>
-          <span className="font-semibold text-green-900 tabular-nums">{percent}%</span>
-        </div>
-        <div
-          role="progressbar"
-          aria-valuenow={percent}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          className="mt-2 h-2.5 overflow-hidden rounded-full bg-green-100"
-        >
-          <div className="h-full rounded-full bg-green-700" style={{ width: `${percent}%` }} />
-        </div>
+        {project.percentComplete === null ? (
+          <p className="rounded-[12px] border border-dashed border-line bg-paper-alt p-5 text-sm text-ink-muted">
+            No progress report has been published yet. The office-bearers add a dated report when the
+            work is visited.
+          </p>
+        ) : (
+          <>
+            <div className="flex items-baseline justify-between text-sm">
+              <span className="text-ink-muted">
+                Reported by the branch
+                {project.reportedOn ? ` on ${longDate(project.reportedOn)}` : ""}
+              </span>
+              <span className="font-semibold text-green-900 tabular-nums">
+                {project.percentComplete}%
+              </span>
+            </div>
+            <div
+              role="progressbar"
+              aria-valuenow={project.percentComplete}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`${project.title} progress`}
+              className="mt-2 h-2.5 overflow-hidden rounded-full bg-green-100"
+            >
+              <div
+                className="h-full rounded-full bg-green-700"
+                style={{ width: `${project.percentComplete}%` }}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       <table className="mt-8 w-full border-collapse text-sm">
         <caption className="sr-only">Money involved in this work</caption>
         <tbody>
-          {[
-            { label: "Sanctioned amount", value: project.sanctionedPaise },
-            { label: "Spent to date", value: project.spentPaise },
-            { label: remaining >= 0 ? "Still to spend" : "Over sanction by", value: Math.abs(remaining) },
-          ].map((row) => (
-            <tr key={row.label} className="border-b border-line">
-              <th scope="row" className="py-3 pr-4 text-left font-normal text-ink-muted">
-                {row.label}
-              </th>
-              <td
-                className={`py-3 text-right font-medium tabular-nums ${
-                  row.value < 0 ? "text-red-700" : ""
-                }`}
-              >
-                {formatPaise(row.value)}
-              </td>
-            </tr>
-          ))}
+          <tr className="border-b border-line">
+            <th scope="row" className="py-3 pr-4 text-left font-normal text-ink-muted">
+              Sanctioned amount
+            </th>
+            <td className="py-3 text-right font-medium tabular-nums">
+              {project.sanctionedPaise > 0 ? formatPaise(project.sanctionedPaise) : "Not published"}
+            </td>
+          </tr>
+          <tr className="border-b border-line">
+            <th scope="row" className="py-3 pr-4 text-left font-normal text-ink-muted">
+              Spent to date
+            </th>
+            <td className="py-3 text-right text-xs text-ink-muted">
+              Published with the accounts
+            </td>
+          </tr>
         </tbody>
       </table>
 
-      <p className="mt-10 border-t border-line pt-6 text-xs text-ink-muted">
-        Date-wise updates from the field, photographs of the work, and the number of families helped are
-        added to this page as the branch records them.
-      </p>
+      <section className="mt-10" aria-labelledby="timeline-heading">
+        <h2 id="timeline-heading" className="text-xl">
+          Progress reports
+        </h2>
+
+        {updates.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-muted">
+            Nothing has been reported from the site yet.
+          </p>
+        ) : (
+          <ol
+            aria-label="Progress reports for this work, newest first"
+            className="mt-5 space-y-6 border-l border-line pl-5"
+          >
+            {updates.map((update, index) => (
+              <li key={`${update.date}-${index}`} className="relative">
+                <span
+                  aria-hidden="true"
+                  className="absolute -left-[26px] top-1.5 h-2.5 w-2.5 rounded-full bg-green-700 ring-4 ring-paper"
+                />
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">
+                  {longDate(update.date)} · {update.percentComplete}%
+                </p>
+                <p className="mt-2 text-[15px] leading-7">{update.text}</p>
+                {update.photos.length > 0 ? (
+                  <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {update.photos.map((photo) => (
+                      <li key={photo}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={photo}
+                          alt={`Part of the work as it stood on ${longDate(update.date)}`}
+                          className="h-28 w-full rounded-[8px] object-cover"
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
     </article>
   );
 }
