@@ -1,13 +1,14 @@
 /**
- * Public view-models for the site's content, plus the source that feeds them.
+ * Public view-models for the site's content, and the reads behind them.
  *
- * Plans 2 and 3 replace `getHomepageContent`'s body with MongoDB reads. The
- * return types are what the page components bind to, so those components do
- * not change when the data starts coming from the database.
+ * Every sentence and figure here comes from something the branch has typed, or
+ * from a ledger entry it has made. Nothing in this file stands in for a record
+ * the branch has not supplied: a database that cannot be read says so, and one
+ * that is empty reports nothing published — which each page renders as its own
+ * standing sentence rather than a gap.
  */
 
 import { getSettings, type SettingsValues } from "@/lib/settings";
-import { fiscalYearFromLabel } from "@/lib/fiscal-year";
 import { listMembers, toDirectoryRow, toPublicMember } from "@/lib/members";
 import { getPublishedNoticeBySlug, listPublishedNotices } from "@/lib/notices";
 import { publicProjectBySlug, publicProjects } from "@/lib/projects";
@@ -114,7 +115,8 @@ export type ContactDetails = {
 };
 
 export type HomepageContent = {
-  introduction: string;
+  /** The branch's own words; null until the office-bearers write them in Settings. */
+  introduction: string | null;
   notices: readonly PublicNotice[];
   /** True when the notices could not be read at all — not merely none yet. */
   noticesUnavailable: boolean;
@@ -124,70 +126,9 @@ export type HomepageContent = {
   finance: FinanceSnapshot | null;
   photos: readonly GalleryPhoto[];
   contact: ContactDetails;
-  /**
-   * True while the branch has supplied no real introduction and no real
-   * accounts. Every section renders a DEMO marker from this flag, and it still
-   * covers the finance block until Plan 3 fills it — demo figures can never
-   * quietly become a public record.
-   */
-  isSample: boolean;
 };
 
 export { KIND_LABEL, MEMBER_TYPE_LABEL, STATUS_LABEL } from "@/lib/labels";
-
-const SAMPLE_NOTICES: readonly PublicNotice[] = [
-  {
-    slug: "sample-annual-general-meeting",
-    kind: "notice",
-    title: "Annual General Meeting — members are requested to attend",
-    publishedOn: "2026-09-10",
-    eventDate: "2026-10-02",
-    venue: "Branch office, Sumsilui",
-    excerpt:
-      "The branch office-bearers will present the year's accounts and the works carried out during the year.",
-    body: "All members of the branch are requested to attend the Annual General Meeting.\n\nThe office-bearers will present the accounts for the year, the works carried out, and the programme for the coming year. Members who wish to raise a matter may send it to the Secretary in writing before the meeting.\n\nRefreshments will be arranged for those attending.",
-    translations: [],
-    attachments: [],
-  },
-  {
-    slug: "sample-blood-donation-camp",
-    kind: "announcement",
-    title: "Volunteers needed for the blood donation camp",
-    publishedOn: "2026-08-28",
-    eventDate: "2026-09-20",
-    venue: "Branch office, Sumsilui",
-    excerpt:
-      "Registration at the branch office. Bring an identity card. Donors above 60 are advised to consult a doctor first.",
-    body: "The branch is organising a blood donation camp with the help of the local blood bank.\n\nVolunteers are needed to register donors, guide donors through the camp, and stay afterwards to help with refreshments. Anyone able to give part of the day is welcome.\n\nDonors should eat before attending and carry an identity card. Donors above sixty are advised to consult their doctor first.",
-    translations: [],
-    attachments: [],
-  },
-  {
-    slug: "sample-student-scholarship",
-    kind: "notice",
-    title: "Applications open for the branch student assistance scheme",
-    publishedOn: "2026-08-14",
-    eventDate: "2026-09-05",
-    venue: null,
-    excerpt:
-      "Students of classes IX, XI and the first year of graduation may apply with a marks card and income certificate.",
-    body: "Applications are invited from students of the community for the branch assistance scheme.\n\nStudents of class IX, class XI and the first year of graduation may apply. A recent marks card, a residence certificate, and an income certificate of the guardian are required.\n\nApplications are received at the branch office. The selection committee meets after the last date and the list of assistance is published afterwards.",
-    translations: [],
-    attachments: [],
-  },
-  {
-    slug: "sample-press-road-repair",
-    kind: "press_release",
-    title: "Association submits memorandum on the repair of the approach road",
-    publishedOn: "2026-07-30",
-    venue: null,
-    excerpt:
-      "A delegation met the local member and handed over a memorandum signed by residents of the locality.",
-    body: "A delegation of the branch office-bearers met the local member and handed over a memorandum on the condition of the approach road.\n\nThe memorandum records that a stretch of the road has remained unrepaired through two monsoons, that school vehicles cannot use it in heavy rain, and that residents have collected signatures in support.\n\nThe association requests a written reply and a target date for the repair.",
-    translations: [],
-    attachments: [],
-  },
-];
 
 export const CONTACT_PLACEHOLDER: ContactDetails = {
   addressLines: ["Mizoram — PIN code to be confirmed"],
@@ -216,16 +157,22 @@ function contactFromSettings(settings: SettingsValues): ContactDetails {
 }
 
 /**
- * A settings read that fails must not take the page down with it — the footer
- * already says the details are unavailable, so the section falls back to blank.
+ * A settings read that fails must not take the page down with it. The sections
+ * that need it fall back to their own "not published yet" wording, so a
+ * timeout never becomes a page of blanks or, worse, a page of guesses.
  */
-async function loadContact(): Promise<ContactDetails> {
+async function loadSettingsOrNull(): Promise<SettingsValues | null> {
   try {
-    return contactFromSettings(await getSettings());
+    return await getSettings();
   } catch (error) {
-    console.error("contact details unavailable", error);
-    return CONTACT_PLACEHOLDER;
+    console.error("site settings are unavailable", error);
+    return null;
   }
+}
+
+async function loadContact(): Promise<ContactDetails> {
+  const settings = await loadSettingsOrNull();
+  return settings ? contactFromSettings(settings) : CONTACT_PLACEHOLDER;
 }
 
 export type BankDetails = {
@@ -268,37 +215,30 @@ export async function getBankDetails(): Promise<BankDetails> {
 }
 
 /**
- * The parts of the homepage the branch has not supplied yet: the introduction
- * and the finance block. Works and notices come from the database, so nothing
- * here can reach a visitor as a record of what the branch has done.
+ * The front page, section by section. What the branch has not published stays
+ * unseen: the introduction is its own words from Settings, the notices and
+ * works are what the database holds, and the finance block is empty until a
+ * treasurer closes a year.
  */
-const SAMPLE_CONTENT: Omit<HomepageContent, "projects" | "projectsUnavailable"> = {
-  introduction:
-    "Young Chakma Association, Sumsilui Branch serves the Chakma community of Sumsilui in Mizoram. The branch carries out social work, keeps its accounts open for members to read, and publishes its notices here.",
-  notices: SAMPLE_NOTICES,
-  noticesUnavailable: false,
-  finance: {
-    yearLabel: "2026-27",
-    openingPaise: 18500000,
-    incomePaise: 46200000,
-    expensePaise: 31450000,
-    closingPaise: 33250000,
-  },
-  photos: [],
-  contact: CONTACT_PLACEHOLDER,
-  isSample: true,
-};
-
 export async function getHomepageContent(): Promise<HomepageContent> {
-  const notices = await getNotices();
-  const works = await getWorks("ongoing");
+  const [notices, works, finance, settings] = await Promise.all([
+    getNotices(),
+    getWorks("ongoing"),
+    getFinanceSummary(),
+    loadSettingsOrNull(),
+  ]);
+
   return {
-    ...SAMPLE_CONTENT,
+    introduction: settings?.missionText.trim() || null,
     notices: notices.state === "ready" ? notices.items : [],
     noticesUnavailable: notices.state === "unavailable",
     projects: works.state === "ready" ? works.items.slice(0, 3) : [],
     projectsUnavailable: works.state === "unavailable",
-    contact: await loadContact(),
+    finance,
+    // The gallery's own screen, and the photographs behind it, arrive with the
+    // upload task. Until then there is no photo to show, and the strip says so.
+    photos: [],
+    contact: settings ? contactFromSettings(settings) : CONTACT_PLACEHOLDER,
   };
 }
 
@@ -310,12 +250,7 @@ export async function getNotices(kind?: NoticeKind): Promise<PublicRead<PublicNo
     console.error("notices are unavailable", error);
     return { state: "unavailable" };
   }
-  if (published.length > 0) return { state: "ready", items: published };
-
-  // Nothing published yet, so the standing-in notices keep the layout reviewable.
-  // They are marked DEMO wherever they render, and Task 6 deletes them.
-  const samples = SAMPLE_NOTICES.filter((notice) => !kind || notice.kind === kind);
-  return samples.length > 0 ? { state: "ready", items: samples } : { state: "empty" };
+  return published.length > 0 ? { state: "ready", items: published } : { state: "empty" };
 }
 
 /**
@@ -330,12 +265,7 @@ export async function getNoticeBySlug(slug: string): Promise<NoticeDetail> {
     console.error("this notice is unavailable", error);
     return { state: "unavailable" };
   }
-  if (published) return { state: "ready", notice: published };
-
-  // Only the standing-in notices, whose addresses are fixed, keep resolving.
-  // A real slug that is not in the database is a genuine 404.
-  const sample = SAMPLE_NOTICES.find((notice) => notice.slug === slug);
-  return sample ? { state: "ready", notice: sample } : { state: "missing" };
+  return published ? { state: "ready", notice: published } : { state: "missing" };
 }
 
 /**
@@ -454,11 +384,69 @@ export async function getContactDetails(): Promise<ContactDetails> {
   return loadContact();
 }
 
+/**
+ * The summary the front page shows for the current year.
+ *
+ * Plan 3 calculates this from the transaction ledger. Until a treasurer closes
+ * a year there is nothing to show, and no substitute for it: a row of zeros
+ * would be as invented as a made-up balance, and would have the site publishing
+ * a financial claim nobody entered.
+ */
+export async function getFinanceSummary(): Promise<FinanceSnapshot | null> {
+  return null;
+}
+
 export type FinanceYearOption = { label: string; startDate: string; endDate: string };
 
+/**
+ * The years whose accounts the branch has published. None until the ledger
+ * exists, because offering a year to open would itself claim a record kept.
+ */
 export async function getFinanceYears(): Promise<readonly FinanceYearOption[]> {
-  const finance = SAMPLE_CONTENT.finance;
-  if (!finance) return [];
-  const year = fiscalYearFromLabel(finance.yearLabel);
-  return [{ label: year.label, startDate: year.startDate, endDate: year.endDate }];
+  return [];
+}
+
+/** What `/about` shows, and which part of the settings each line reads from. */
+export type AboutContent = {
+  /** The branch's own account of how it began. */
+  branchStory: string | null;
+  mission: string | null;
+  foundedYear: number | null;
+  registrationNo: string | null;
+  /** True when the settings could not be read at all, so the blanks prove nothing. */
+  unavailable: boolean;
+};
+
+function textOrNothing(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * The settings' fields mapped onto the page's sections. A box nobody has filled
+ * stays empty on the page, which then says the branch has not written it yet —
+ * the site's makers do not supply a mission statement or a founding story on
+ * the office-bearers' behalf.
+ */
+export function toAboutContent(settings: SettingsValues | null): AboutContent {
+  if (!settings) {
+    return {
+      branchStory: null,
+      mission: null,
+      foundedYear: null,
+      registrationNo: null,
+      unavailable: true,
+    };
+  }
+  return {
+    branchStory: textOrNothing(settings.aboutText),
+    mission: textOrNothing(settings.missionText),
+    foundedYear: settings.branchFoundedYear,
+    registrationNo: textOrNothing(settings.registrationNo),
+    unavailable: false,
+  };
+}
+
+export async function getAboutContent(): Promise<AboutContent> {
+  return toAboutContent(await loadSettingsOrNull());
 }

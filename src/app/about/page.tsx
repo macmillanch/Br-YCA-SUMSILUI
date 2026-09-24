@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@/components/site/EmptyState";
+import { PageHeader, SectionUnavailable } from "@/components/site/EmptyState";
+import { getAboutContent } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "About",
@@ -7,15 +8,23 @@ export const metadata: Metadata = {
     "Young Chakma Association was established in 1978. This page describes the association and its Sumsilui Branch.",
 };
 
-const OBJECTIVES = [
-  "To keep the younger members of the community in touch with one another, and to give them a place to meet and work together.",
-  "To help students with their studies, and to arrange assistance where a family cannot meet the cost of schooling alone.",
-  "To carry out work the locality needs — water, light, drains, paths and places to meet — and to account publicly for what is spent.",
-  "To look after the culture and language of the community, and to pass them on to those growing up now.",
-  "To be of help in times of need, whether to members of the branch or to neighbours of the locality.",
-];
+/**
+ * What the branch has not written yet, said plainly. The alternative — a
+ * paragraph composed by whoever built the site — reads to a visitor as the
+ * branch's own statement of purpose, and no marker on the page can take that
+ * back.
+ */
+function NotWrittenYet({ children }: { children: string }) {
+  return (
+    <p className="mt-3 rounded-[12px] border border-dashed border-line bg-paper-alt p-5 text-sm leading-6 text-ink-muted">
+      {children}
+    </p>
+  );
+}
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const about = await getAboutContent();
+
   return (
     <div className="container-page max-w-3xl space-y-10 py-10">
       <PageHeader
@@ -31,34 +40,46 @@ export default function AboutPage() {
           units, each run by its own office-bearers, on the association&rsquo;s standing appeal to
           its members: <em>Do Help</em>.
         </p>
+        {about.foundedYear ? (
+          <p className="mt-3 text-[15px] leading-7">
+            The Sumsilui Branch was founded in {about.foundedYear}.
+          </p>
+        ) : null}
+        {about.registrationNo ? (
+          <p className="mt-3 text-[15px] leading-7">Registered as {about.registrationNo}.</p>
+        ) : null}
       </section>
 
       <section aria-labelledby="about-branch">
         <h2 id="about-branch">Sumsilui Branch</h2>
-        <p className="mt-3 text-[15px] leading-7 text-ink-muted">
-          The branch was founded in a year the office-bearers have not yet entered in the site
-          settings, and its current office-bearers are listed on the executive members page. When the
-          branch supplies its own account of how it began, that text replaces this note from
-          Admin&nbsp;&rarr;&nbsp;Settings rather than being written into the site by a developer.
-        </p>
+        {about.unavailable ? (
+          <div className="mt-3">
+            <SectionUnavailable what="The branch's own words" />
+          </div>
+        ) : about.branchStory ? (
+          <p className="mt-3 whitespace-pre-line text-[15px] leading-7">{about.branchStory}</p>
+        ) : (
+          <NotWrittenYet>
+            The office-bearers have not written the branch&rsquo;s own account of how it began and
+            what it does locally. It will appear here word for word from Admin&nbsp;&rarr;&nbsp;Settings.
+          </NotWrittenYet>
+        )}
       </section>
 
       <section aria-labelledby="about-mission">
-        <h2 id="about-mission">Mission</h2>
-        <p className="mt-3 text-[15px] leading-7">
-          To serve the people of Sumsilui by doing openly what a community association can do well:
-          bringing people together, helping students, completing small works the locality needs, and
-          keeping an account of every rupee that passes through the association&rsquo;s hands.
-        </p>
-      </section>
-
-      <section aria-labelledby="about-objectives">
-        <h2 id="about-objectives">Objectives</h2>
-        <ol className="mt-3 list-decimal space-y-2 pl-5 text-[15px] leading-7 marker:text-green-700 marker:font-semibold">
-          {OBJECTIVES.map((objective) => (
-            <li key={objective}>{objective}</li>
-          ))}
-        </ol>
+        <h2 id="about-mission">Mission and objectives</h2>
+        {about.unavailable ? (
+          <div className="mt-3">
+            <SectionUnavailable what="The branch's objectives" />
+          </div>
+        ) : about.mission ? (
+          <p className="mt-3 whitespace-pre-line text-[15px] leading-7">{about.mission}</p>
+        ) : (
+          <NotWrittenYet>
+            The branch has not entered its mission and objectives yet. They will appear here as the
+            office-bearers write them.
+          </NotWrittenYet>
+        )}
       </section>
     </div>
   );

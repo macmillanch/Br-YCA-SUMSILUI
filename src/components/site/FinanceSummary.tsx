@@ -1,15 +1,13 @@
 import { Button } from "@/components/ui/Button";
-import { DemoFlag } from "@/components/ui/Badge";
 import { formatPaise } from "@/lib/money";
 import type { FinanceSnapshot } from "@/lib/content";
 
-export function FinanceSummary({
-  finance,
-  isSample,
-}: {
-  finance: FinanceSnapshot | null;
-  isSample: boolean;
-}) {
+/**
+ * The published year, or the honesty of none. Figures reach this component from
+ * the ledger and nowhere else, so the empty branch is the one a branch sees
+ * before its treasurer has closed a year.
+ */
+export function FinanceSummary({ finance }: { finance: FinanceSnapshot | null }) {
   if (!finance) {
     return (
       <div className="rounded-[12px] border border-line bg-paper-alt p-6 text-sm text-ink-muted">
@@ -55,12 +53,6 @@ export function FinanceSummary({
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-ink-muted">
           Financial year {finance.yearLabel} (1 April to 31 March).
-          {isSample ? (
-            <>
-              {" "}
-              <DemoFlag label="Demo figures" /> These amounts are layout samples, not branch accounts.
-            </>
-          ) : null}
         </p>
         <Button href="/finance" variant="ghost">
           View full financial report

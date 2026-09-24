@@ -21,15 +21,3 @@ export function Badge({
     </span>
   );
 }
-
-/**
- * Stands in place of the `text-[11px]` badge where a reader needs to know the
- * figures below it are layout samples rather than branch records.
- */
-export function DemoFlag({ label = "Demo content" }: { label?: string }) {
-  return (
-    <Badge tone="red" className="align-middle">
-      {label}
-    </Badge>
-  );
-}

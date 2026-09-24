@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { FinanceSummary } from "@/components/site/FinanceSummary";
 import { PageHeader } from "@/components/site/EmptyState";
-import { getFinanceYears, getHomepageContent } from "@/lib/content";
+import { getFinanceSummary, getFinanceYears } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Finance",
   description:
     "Year-by-year income and expenditure of Young Chakma Association, Sumsilui Branch, published in public view.",
 };
+
+const DESCRIPTION =
+  "Income and expenditure year by year. Figures are calculated from the branch's ledger entries rather than typed in by hand, so a total always matches the vouchers underneath it.";
 
 export default async function FinancePage({
   searchParams,
@@ -18,15 +21,11 @@ export default async function FinancePage({
   const { year } = await searchParams;
   if (year) redirect(`/finance/${encodeURIComponent(year)}`);
 
-  const [content, years] = await Promise.all([getHomepageContent(), getFinanceYears()]);
+  const [finance, years] = await Promise.all([getFinanceSummary(), getFinanceYears()]);
 
   return (
     <div className="container-page space-y-8 py-10">
-      <PageHeader
-        eyebrow="Public accounts"
-        title="Finance"
-        description="Every figure below is calculated on the server from the transaction ledger. Balances are never typed in by hand, so the total always matches the entries underneath it."
-      />
+      <PageHeader eyebrow="Public accounts" title="Finance" description={DESCRIPTION} />
 
       <div className="flex flex-wrap items-end gap-3">
         <div>
@@ -61,7 +60,7 @@ export default async function FinancePage({
       </div>
       <p className="text-xs text-ink-muted">A financial year runs from 1 April to 31 March.</p>
 
-      <FinanceSummary finance={content.finance} isSample={content.isSample} />
+      <FinanceSummary finance={finance} />
     </div>
   );
 }

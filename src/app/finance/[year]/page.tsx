@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { DemoFlag } from "@/components/ui/Badge";
 import { EmptyState, PageHeader } from "@/components/site/EmptyState";
-import { getFinanceYears, getHomepageContent } from "@/lib/content";
-import { fiscalYearFromLabel, isInFiscalYear } from "@/lib/fiscal-year";
+import { getFinanceSummary, getFinanceYears } from "@/lib/content";
+import { fiscalYearFromLabel } from "@/lib/fiscal-year";
 import { formatPaise } from "@/lib/money";
 
 export async function generateStaticParams() {
@@ -33,15 +32,10 @@ export async function generateMetadata({
 
 export default async function FinanceYearPage({ params }: { params: Promise<{ year: string }> }) {
   const { year } = await params;
-  const known = await getFinanceYears();
+  const [known, finance] = await Promise.all([getFinanceYears(), getFinanceSummary()]);
   if (!known.some((option) => option.label === year)) notFound();
 
   const period = fiscalYearFromLabel(year);
-  const content = await getHomepageContent();
-  const finance = content.finance;
-  const project = content.projects.find(
-    (item) => isInFiscalYear("2026-09-24", period) && item.status === "ongoing",
-  );
 
   return (
     <div className="container-page space-y-8 py-10">
@@ -106,20 +100,13 @@ export default async function FinanceYearPage({ params }: { params: Promise<{ ye
         </table>
       ) : null}
 
-      {content.isSample ? (
-        <p className="text-xs text-ink-muted">
-          <DemoFlag label="Demo figures" /> These amounts are layout samples. The branch&rsquo;s real
-          accounts replace them once the treasurer publishes a year.
-        </p>
-      ) : null}
-
-      {project ? (
+      {finance ? null : (
         <EmptyState
-          title="Entry-by-entry ledger not published yet"
-          body={`The individual vouchers behind the ${year} figures are being entered work by work — for example ${project.title}. Once the treasurer publishes the year, every voucher appears here with its date, voucher number, description, party and amount, and the whole ledger can be downloaded as a spreadsheet.`}
+          title={`No accounts published for ${year}`}
+          body="The vouchers behind a year are entered work by work as they are passed. Once the treasurer closes the year, every entry appears here with its date, voucher number, description, party and amount, and the whole ledger can be downloaded as a spreadsheet."
           action={{ href: "/admin", label: "Office-bearers: sign in to enter vouchers" }}
         />
-      ) : null}
+      )}
     </div>
   );
 }

@@ -1,15 +1,19 @@
 import Image from "next/image";
 import { Button } from "@/components/ui/Button";
-import { DemoFlag } from "@/components/ui/Badge";
 
-export function Hero({ introduction, isSample }: { introduction: string; isSample: boolean }) {
+/**
+ * The branch's own words, from Settings, when the office-bearers have written
+ * them. Until they have, the line says what this website does — a claim the page
+ * can make for itself — rather than a mission statement written on the branch's
+ * behalf and marked up as though the branch had issued it.
+ */
+export function Hero({ introduction }: { introduction: string | null }) {
   return (
     <section aria-labelledby="hero-title" className="border-b border-line bg-green-900 text-white">
       <div className="container-page grid items-center gap-8 py-12 md:grid-cols-[minmax(0,1fr)_auto] md:py-16">
         <div>
-          <p className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-green-100">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-green-100">
             Est. 1978 &middot; Mizoram
-            {isSample ? <DemoFlag /> : null}
           </p>
           <h1
             id="hero-title"
@@ -20,7 +24,10 @@ export function Hero({ introduction, isSample }: { introduction: string; isSampl
               Sumsilui Branch &middot; Mizoram
             </span>
           </h1>
-          <p className="mt-5 max-w-prose text-[15px] leading-7 text-green-100">{introduction}</p>
+          <p className="mt-5 max-w-prose text-[15px] leading-7 text-green-100">
+            {introduction ??
+              "The branch's notices, works and accounts appear here as its office-bearers record them."}
+          </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Button href="/notices" size="lg" variant="inverse">
               Read latest notices

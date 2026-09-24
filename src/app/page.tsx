@@ -15,7 +15,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <Hero introduction={content.introduction} isSample={content.isSample} />
+      <Hero introduction={content.introduction} />
 
       <div className="container-page space-y-16 py-12 md:py-16">
         <section aria-labelledby="notices-heading">
@@ -77,10 +77,10 @@ export default async function HomePage() {
             id="finance-heading"
             eyebrow="Where the money went"
             title="Financial transparency"
-            description="The current financial year at a glance, taken straight from the ledger."
+            description="The current year at a glance, as the treasurer publishes it."
           />
           <div className="mt-6">
-            <FinanceSummary finance={content.finance} isSample={content.isSample} />
+            <FinanceSummary finance={content.finance} />
           </div>
         </section>
 
