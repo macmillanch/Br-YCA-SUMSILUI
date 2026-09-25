@@ -9,11 +9,32 @@
  */
 
 import { getSettings, type SettingsValues } from "@/lib/settings";
+import { categoryLabel } from "@/lib/finance-categories";
+import {
+  listFinancialYears,
+  listTransactions,
+  yearIsClosed,
+} from "@/lib/finance";
+import {
+  summarise,
+  totalsByCategory,
+  type CategoryTotal,
+  type LedgerRow,
+} from "@/lib/finance-summary";
+import { istCalendarDate } from "@/lib/dates";
 import { galleryAlbums, recentGalleryItems, type GalleryAlbum, type PublicGalleryItem } from "@/lib/gallery";
 import { listMembers, toDirectoryRow, toPublicMember } from "@/lib/members";
 import { getPublishedNoticeBySlug, listPublishedNotices } from "@/lib/notices";
 import { publicProjectBySlug, publicProjects } from "@/lib/projects";
-import type { MemberType, NoticeKind, ProjectStatus } from "@/lib/types";
+import type { ObjectId } from "mongodb";
+import type {
+  FinancialYearDoc,
+  MemberType,
+  NoticeKind,
+  ProjectStatus,
+  TransactionDoc,
+  TransactionType,
+} from "@/lib/types";
 
 export type { MemberType, NoticeKind, ProjectStatus };
 
@@ -125,7 +146,7 @@ export type HomepageContent = {
   /** The works the branch has under way, read from the database like the notices. */
   projects: readonly PublicProject[];
   projectsUnavailable: boolean;
-  finance: FinanceSnapshot | null;
+  finance: FinanceSummaryContent;
   photos: readonly GalleryPhoto[];
   photosUnavailable: boolean;
   contact: ContactDetails;
@@ -453,25 +474,224 @@ export async function getContactDetails(): Promise<ContactContent> {
 }
 
 /**
- * The summary the front page shows for the current year.
- *
- * Plan 3 calculates this from the transaction ledger. Until a treasurer closes
- * a year there is nothing to show, and no substitute for it: a row of zeros
- * would be as invented as a made-up balance, and would have the site publishing
- * a financial claim nobody entered.
+ * The years whose accounts the branch keeps. A locked year is shown as closed
+ * rather than hidden: a member reading a year that cannot change is the point of
+ * closing it, and a list that skipped it would look as though the year had never
+ * been kept at all.
  */
-export async function getFinanceSummary(): Promise<FinanceSnapshot | null> {
-  return null;
+export type FinanceYearOption = {
+  label: string;
+  startDate: string;
+  endDate: string;
+  locked: boolean;
+};
+
+function toYearOption(doc: FinancialYearDoc): FinanceYearOption {
+  return {
+    label: doc.label,
+    startDate: doc.startDate,
+    endDate: doc.endDate,
+    locked: yearIsClosed(doc),
+  };
 }
 
-export type FinanceYearOption = { label: string; startDate: string; endDate: string };
+export async function getFinanceYears(): Promise<PublicRead<FinanceYearOption>> {
+  let years: FinancialYearDoc[];
+  try {
+    years = await listFinancialYears();
+  } catch (error) {
+    console.error("the published years are unavailable", error);
+    return { state: "unavailable" };
+  }
+  return years.length > 0 ? { state: "ready", items: years.map(toYearOption) } : { state: "empty" };
+}
 
 /**
- * The years whose accounts the branch has published. None until the ledger
- * exists, because offering a year to open would itself claim a record kept.
+ * The front page's three figures, and whether they could be read at all.
+ *
+ * `yearsOpened` is kept because the two empty cases ask for different sentences:
+ * no year opened is a branch that has not started publishing, while a year
+ * opened with nothing in it is one that has started and is still entering
+ * vouchers.
  */
-export async function getFinanceYears(): Promise<readonly FinanceYearOption[]> {
-  return [];
+export type FinanceSummaryContent = {
+  snapshot: FinanceSnapshot | null;
+  unavailable: boolean;
+  yearsOpened: number;
+};
+
+/**
+ * The year a visitor is shown as "this year": the one whose dates today falls
+ * between, or — when the branch has not opened that year yet — the newest one it
+ * has. A year opened ahead of today counts as the newest thing there is, because
+ * closing accounts in advance is the treasurer's own business and a page that
+ * skipped it would show an older year than the branch keeps.
+ */
+export function financeYearToOpen(
+  years: readonly FinancialYearDoc[],
+  today: Date,
+): FinancialYearDoc | null {
+  const iso = istCalendarDate(today);
+  const covering = years.find((year) => iso >= year.startDate && iso <= year.endDate);
+  if (covering) return covering;
+
+  return years.reduce<FinancialYearDoc | null>(
+    (newest, year) => (!newest || year.startDate > newest.startDate ? year : newest),
+    null,
+  );
+}
+
+function chooseYear(
+  years: readonly FinancialYearDoc[],
+  label?: string,
+): FinancialYearDoc | null {
+  if (label === undefined) return financeYearToOpen(years, new Date());
+  return years.find((year) => year.label === label) ?? null;
+}
+
+/** What the ledger needs from a voucher, and nothing the pages print. */
+function toLedgerRow(doc: TransactionDoc): LedgerRow {
+  return {
+    type: doc.type,
+    category: doc.category,
+    amountPaise: doc.amountPaise,
+    projectId: doc.projectId ?? null,
+  };
+}
+
+/**
+ * The three states, worked out from what the reads returned rather than from
+ * what they threw: a year and its vouchers, a year and an unreadable ledger, or
+ * no year at all. Exported pure because that is the only way §9's difference
+ * between *empty* and *unavailable* can be tested without a database.
+ */
+export function toFinanceContent(
+  year: FinancialYearDoc | null,
+  rows: readonly LedgerRow[] | null,
+  yearsOpened: number,
+): FinanceSummaryContent {
+  if (rows === null) return { snapshot: null, unavailable: true, yearsOpened };
+  if (!year) return { snapshot: null, unavailable: false, yearsOpened };
+
+  return {
+    snapshot: { yearLabel: year.label, ...summarise(year.openingBalancePaise, rows) },
+    unavailable: false,
+    yearsOpened,
+  };
+}
+
+/**
+ * The summary the front page and `/api/finance/summary` show.
+ *
+ * Every rupee in it is totalled from the vouchers entered against the year, and
+ * nothing is standing in for a figure nobody entered. When the ledger cannot be
+ * read the result says so instead of printing a year of zeros, which would be a
+ * financial claim the branch has not made (§9).
+ */
+export async function getFinanceSummary(label?: string): Promise<FinanceSummaryContent> {
+  let years: FinancialYearDoc[];
+  try {
+    years = await listFinancialYears();
+  } catch (error) {
+    console.error("the branch's figures are unavailable", error);
+    return toFinanceContent(null, null, 0);
+  }
+
+  const year = chooseYear(years, label);
+  if (!year) return toFinanceContent(null, [], years.length);
+
+  let docs: TransactionDoc[];
+  try {
+    docs = await listTransactions({ yearId: year._id });
+  } catch (error) {
+    console.error(`the ledger for ${year.label} could not be totalled`, error);
+    return toFinanceContent(null, null, years.length);
+  }
+
+  return toFinanceContent(year, docs.map(toLedgerRow), years.length);
+}
+
+/**
+ * One line of the published ledger. The direction travels with it, because a
+ * rupee figure that does not say whether money came in or went out is half a
+ * record — and the reader is the one left to guess which half.
+ */
+export type PublicLedgerRow = {
+  date: string;
+  voucherNo: string;
+  description: string;
+  party: string;
+  type: TransactionType;
+  categoryLabel: string;
+  amountPaise: number;
+};
+
+function toPublicLedgerRow(doc: TransactionDoc): PublicLedgerRow {
+  return {
+    date: doc.date,
+    voucherNo: doc.voucherNo,
+    description: doc.description,
+    party: doc.party,
+    type: doc.type,
+    categoryLabel: categoryLabel(doc.category),
+    amountPaise: doc.amountPaise,
+  };
+}
+
+/** The whole ledger is its own page; the summary page shows the tail of it. */
+const VOUCHERS_ON_SUMMARY_PAGE = 8;
+
+/**
+ * One year as the public reads it: totals, each side broken into heads, the
+ * last few vouchers and the audit report when the branch has saved one.
+ *
+ * `missing` is for a year the branch has not opened — a typed label, a link from
+ * a bookmark, a year deleted since — and is the page's own 404. `unavailable` is
+ * for a database that would not answer, which §9 insists is not the same claim.
+ */
+export type FinanceYearDetail =
+  | {
+      state: "ready";
+      year: FinanceYearOption;
+      snapshot: FinanceSnapshot;
+      income: CategoryTotal[];
+      expense: CategoryTotal[];
+      rows: readonly PublicLedgerRow[];
+      auditPdfUrl: string | null;
+    }
+  | { state: "missing" }
+  | { state: "unavailable" };
+
+export async function getFinanceYearDetail(label?: string): Promise<FinanceYearDetail> {
+  let years: FinancialYearDoc[];
+  try {
+    years = await listFinancialYears();
+  } catch (error) {
+    console.error("the published years are unavailable", error);
+    return { state: "unavailable" };
+  }
+
+  const year = chooseYear(years, label);
+  if (!year) return { state: "missing" };
+
+  let docs: TransactionDoc[];
+  try {
+    docs = await listTransactions({ yearId: year._id });
+  } catch (error) {
+    console.error(`the ledger for ${year.label} is unavailable`, error);
+    return { state: "unavailable" };
+  }
+
+  const rows = docs.map(toLedgerRow);
+  return {
+    state: "ready",
+    year: toYearOption(year),
+    snapshot: { yearLabel: year.label, ...summarise(year.openingBalancePaise, rows) },
+    income: totalsByCategory(rows, "income"),
+    expense: totalsByCategory(rows, "expense"),
+    rows: docs.slice(-VOUCHERS_ON_SUMMARY_PAGE).map(toPublicLedgerRow),
+    auditPdfUrl: year.auditPdfUrl ?? null,
+  };
 }
 
 /** What `/about` shows, and which part of the settings each line reads from. */

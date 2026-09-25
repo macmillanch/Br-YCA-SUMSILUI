@@ -80,7 +80,7 @@ export default async function HomePage() {
             description="The current year at a glance, as the treasurer publishes it."
           />
           <div className="mt-6">
-            <FinanceSummary finance={content.finance} />
+            <FinanceSummary {...content.finance} />
           </div>
         </section>
 

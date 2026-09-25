@@ -1,15 +1,35 @@
+import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS, type SettingsValues } from "@/lib/settings";
+import type { LedgerRow } from "@/lib/finance-summary";
+import type { FinancialYearDoc } from "@/lib/types";
 import {
-  getFinanceSummary,
-  getFinanceYears,
+  financeYearToOpen,
   toAboutContent,
   toBankDetails,
   toContactDetails,
+  toFinanceContent,
 } from "@/lib/content";
 
 function settings(over: Partial<SettingsValues> = {}): SettingsValues {
   return { ...DEFAULT_SETTINGS, ...over };
+}
+
+const YEAR_2627 = { label: "2026-27", startDate: "2026-04-01", endDate: "2027-03-31" };
+const YEAR_2526 = { label: "2025-26", startDate: "2025-04-01", endDate: "2026-03-31" };
+const YEAR_2425 = { label: "2024-25", startDate: "2024-04-01", endDate: "2025-03-31" };
+const YEAR_2728 = { label: "2027-28", startDate: "2027-04-01", endDate: "2028-03-31" };
+
+function yearDoc(over: Partial<FinancialYearDoc> = {}): FinancialYearDoc {
+  return {
+    _id: new ObjectId(),
+    openingBalancePaise: 0,
+    locked: false,
+    createdAt: new Date("2026-04-01T00:00:00Z"),
+    updatedAt: new Date("2026-09-24T00:00:00Z"),
+    ...YEAR_2627,
+    ...over,
+  };
 }
 
 describe("the about page's text", () => {
@@ -58,13 +78,68 @@ describe("the about page's text", () => {
   });
 });
 
-describe("the front page's finance block", () => {
-  it("publishes no rupee figure until the ledger produces one", async () => {
-    expect(await getFinanceSummary()).toBeNull();
+describe("which year a visitor sees as this year", () => {
+  const today = new Date("2026-09-24T10:00:00+05:30");
+
+  it("shows the year that covers the day the page is read", () => {
+    const years = [yearDoc(YEAR_2627), yearDoc(YEAR_2526)];
+    expect(financeYearToOpen(years, today)?.label).toBe("2026-27");
   });
 
-  it("offers no financial year until a treasurer closes one", async () => {
-    expect(await getFinanceYears()).toEqual([]);
+  it("shows the newest year there is when today's has not been opened", () => {
+    const years = [yearDoc(YEAR_2526), yearDoc(YEAR_2425)];
+    expect(financeYearToOpen(years, today)?.label).toBe("2025-26");
+  });
+
+  it("keeps a year the treasurer opened ahead of today", () => {
+    const years = [yearDoc(YEAR_2728)];
+    expect(financeYearToOpen(years, today)?.label).toBe("2027-28");
+  });
+
+  it("prefers the year today falls in over one opened ahead of it", () => {
+    const years = [yearDoc(YEAR_2728), yearDoc(YEAR_2627)];
+    expect(financeYearToOpen(years, today)?.label).toBe("2026-27");
+  });
+
+  it("says there is no year at all when none has been opened", () => {
+    expect(financeYearToOpen([], today)).toBeNull();
+  });
+});
+
+describe("the three states of the published figures", () => {
+  const ledger: LedgerRow[] = [
+    { type: "income", category: "donation", amountPaise: 50000000 },
+    { type: "expense", category: "event", amountPaise: 12500000 },
+  ];
+
+  it("totals the year it was handed, naming it", () => {
+    expect(toFinanceContent(yearDoc({ ...YEAR_2627, openingBalancePaise: 2500000 }), ledger, 3)).toEqual({
+      snapshot: {
+        yearLabel: "2026-27",
+        openingPaise: 2500000,
+        incomePaise: 50000000,
+        expensePaise: 12500000,
+        closingPaise: 40000000,
+      },
+      unavailable: false,
+      yearsOpened: 3,
+    });
+  });
+
+  it("reports an outage rather than a year of zeros", () => {
+    expect(toFinanceContent(yearDoc(YEAR_2627), null, 1)).toEqual({
+      snapshot: null,
+      unavailable: true,
+      yearsOpened: 1,
+    });
+  });
+
+  it("reports that nothing has been published when the read was clean", () => {
+    expect(toFinanceContent(null, [], 0)).toEqual({
+      snapshot: null,
+      unavailable: false,
+      yearsOpened: 0,
+    });
   });
 });
 

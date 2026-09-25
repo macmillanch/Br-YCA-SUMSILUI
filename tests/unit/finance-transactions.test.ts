@@ -8,6 +8,8 @@ import {
 } from "@/lib/finance";
 import type { DonationDoc, FinancialYearDoc, TransactionDoc } from "@/lib/types";
 import {
+  LEDGER_QUERY_SCHEMA,
+  SUMMARY_QUERY_SCHEMA,
   TRANSACTION_EDIT_SCHEMA,
   TRANSACTION_SCHEMA,
   type TransactionInput,
@@ -260,5 +262,63 @@ describe("guardWriteFor", () => {
 
   it("names the lock before the donation, because only a super admin can help", () => {
     expect(guardWriteFor({ ...YEAR, locked: true }, donation())).toBe("locked");
+  });
+});
+
+/**
+ * The two ways the ledger is asked for: the whole book, filtered, and one
+ * year's totals. A filter that arrived as an empty string means the treasurer
+ * chose nothing, and a year named in the wrong shape is a broken link rather
+ * than a lookup, so both say so here instead of reaching Mongo.
+ */
+describe("LEDGER_QUERY_SCHEMA", () => {
+  const YEAR_ID = new ObjectId().toHexString();
+
+  it("accepts no filter at all", () => {
+    const parsed = LEDGER_QUERY_SCHEMA.safeParse({});
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts the filters the ledger screen offers", () => {
+    const parsed = LEDGER_QUERY_SCHEMA.safeParse({
+      year: YEAR_ID,
+      project: YEAR_ID,
+      type: "expense",
+      category: "relief",
+      q: "Sumsilui",
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("refuses a year that is not a year the books know", () => {
+    const parsed = LEDGER_QUERY_SCHEMA.safeParse({ year: "2026-27" });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("refuses a search longer than a screen holds", () => {
+    expect(LEDGER_QUERY_SCHEMA.safeParse({ q: "a".repeat(101) }).success).toBe(false);
+  });
+});
+
+describe("SUMMARY_QUERY_SCHEMA", () => {
+  it("asks for the year a visitor would call this one when no year is given", () => {
+    const parsed = SUMMARY_QUERY_SCHEMA.safeParse({});
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.year).toBeUndefined();
+  });
+
+  it("accepts a fiscal year named the way the accounts are kept", () => {
+    expect(SUMMARY_QUERY_SCHEMA.safeParse({ year: "2026-27" }).success).toBe(true);
+  });
+
+  it("refuses a year that does not run from 1 April to 31 March", () => {
+    const parsed = SUMMARY_QUERY_SCHEMA.safeParse({ year: "2026-12" });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("refuses a year id, which is what the ledger filter takes", () => {
+    expect(SUMMARY_QUERY_SCHEMA.safeParse({ year: new ObjectId().toHexString() }).success).toBe(
+      false,
+    );
   });
 });

@@ -19,7 +19,7 @@ import { TRANSACTION_TYPES, type TransactionCategory } from "@/lib/types";
  */
 
 /** `2026-27` — and nothing else that looks like a year. */
-function isFiscalLabel(label: string): boolean {
+export function isFiscalLabel(label: string): boolean {
   try {
     fiscalYearFromLabel(label);
     return true;
@@ -223,3 +223,21 @@ export const LEDGER_QUERY_SCHEMA = z.object({
 });
 
 export type LedgerQueryInput = z.infer<typeof LEDGER_QUERY_SCHEMA>;
+
+/**
+ * The year's totals are asked for by name rather than by id, because a link a
+ * member can read is half the point of publishing a figure. `year` absent means
+ * the year a visitor would call this one, which only the server can work out.
+ */
+export const SUMMARY_QUERY_SCHEMA = z.object({
+  year: z
+    .string()
+    .trim()
+    .max(7, "A financial year is written like 2026-27")
+    .refine(isFiscalLabel, {
+      message: "Write the year as it runs, 1 April to 31 March — like 2026-27",
+    })
+    .optional(),
+});
+
+export type SummaryQueryInput = z.infer<typeof SUMMARY_QUERY_SCHEMA>;
