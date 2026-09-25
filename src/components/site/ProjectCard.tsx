@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/Card";
 import { shortDate } from "@/lib/dates";
 import { STATUS_LABEL, type PublicProject } from "@/lib/content";
 import { formatPaise } from "@/lib/money";
+import { isOverspent, spendLine } from "@/lib/project-spend";
 
 const STATUS_TONE: Record<PublicProject["status"], "green" | "red" | "muted"> = {
   ongoing: "green",
@@ -13,10 +14,24 @@ const STATUS_TONE: Record<PublicProject["status"], "green" | "red" | "muted"> = 
 };
 
 /**
+ * A work that has cost more than the branch sanctioned for it is the one figure
+ * in the row a reader needs to notice, so it is printed in red rather than in
+ * the same ink as the rest. An unreadable ledger is not alarming, only quiet.
+ */
+function spendTone(project: PublicProject): string {
+  if (project.spentPaise === null) return "text-right text-xs text-ink-muted";
+  if (isOverspent(project.budgetSharePct)) {
+    return "text-right font-medium tabular-nums text-red-700";
+  }
+  return "text-right font-medium tabular-nums";
+}
+
+/**
  * One work on the list. The bar shows the percentage the branch reported on its
- * latest dated line and nothing else: until the ledger is wired up a card that
- * showed a spent figure would be showing a number nobody had entered, so the
- * money row says where that figure will come from instead.
+ * latest dated line and nothing else — a half-paid contractor has not
+ * necessarily built half a tank. The money beside it is a different kind of
+ * figure: it is summed from the vouchers naming this work, so it is a number a
+ * treasurer entered, and it says so in the same words every other screen uses.
  */
 export function ProjectCard({ project }: { project: PublicProject }) {
   return (
@@ -76,7 +91,9 @@ export function ProjectCard({ project }: { project: PublicProject }) {
             {project.sanctionedPaise > 0 ? formatPaise(project.sanctionedPaise) : "Not published"}
           </dd>
           <dt className="text-ink-muted">Spent</dt>
-          <dd className="text-right text-xs text-ink-muted">Published with the accounts</dd>
+          <dd className={spendTone(project)}>
+            {spendLine(project.spentPaise, project.sanctionedPaise)}
+          </dd>
         </dl>
       </div>
     </Card>

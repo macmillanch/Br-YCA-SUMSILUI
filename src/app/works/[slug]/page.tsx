@@ -5,6 +5,7 @@ import { SectionUnavailable } from "@/components/site/EmptyState";
 import { longDate } from "@/lib/dates";
 import { getWorkBySlug, getWorks, STATUS_LABEL } from "@/lib/content";
 import { formatPaise } from "@/lib/money";
+import { isOverspent, shareBarWidth, shareCaption, spendLine } from "@/lib/project-spend";
 
 /**
  * Only the addresses that exist at build time are pre-rendered. `dynamicParams`
@@ -46,6 +47,10 @@ export default async function WorkDetailPage({ params }: { params: Promise<{ slu
   }
 
   const { project, updates } = result;
+  // The bar stops at the edge of the sanctioned amount; the caption under it
+  // prints the real share, so an overspend is drawn inside its track but is not
+  // hidden. No share is drawn at all when the ledger could not be read.
+  const share = shareBarWidth(project.budgetSharePct);
 
   return (
     <article className="container-page max-w-3xl py-10">
@@ -119,12 +124,34 @@ export default async function WorkDetailPage({ params }: { params: Promise<{ slu
             <th scope="row" className="py-3 pr-4 text-left font-normal text-ink-muted">
               Spent to date
             </th>
-            <td className="py-3 text-right text-xs text-ink-muted">
-              Published with the accounts
+            <td
+              className={`py-3 text-right tabular-nums ${
+                project.spentPaise === null
+                  ? "text-xs text-ink-muted"
+                  : isOverspent(project.budgetSharePct)
+                    ? "font-medium text-red-700"
+                    : "font-medium"
+              }`}
+            >
+              {spendLine(project.spentPaise, project.sanctionedPaise)}
             </td>
           </tr>
         </tbody>
       </table>
+
+      {share === null ? null : (
+        <div className="mt-3">
+          <div aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-green-100">
+            <div
+              className={`h-full rounded-full ${
+                isOverspent(project.budgetSharePct) ? "bg-red-700" : "bg-green-700"
+              }`}
+              style={{ width: `${share}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs text-ink-muted tabular-nums">{shareCaption(project.budgetSharePct)}</p>
+        </div>
+      )}
 
       <section className="mt-10" aria-labelledby="timeline-heading">
         <h2 id="timeline-heading" className="text-xl">

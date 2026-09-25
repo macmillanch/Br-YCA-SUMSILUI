@@ -50,7 +50,7 @@ export default async function HomePage() {
             id="works-heading"
             eyebrow="What has been done"
             title="Ongoing works"
-            description="Each work shows what was sanctioned for it and the progress the branch last reported from the site."
+            description="Each work shows what was sanctioned for it, what the branch's vouchers have paid out against it, and the progress the branch last reported from the site."
             action={{ href: "/works", label: "View all works" }}
           />
           {content.projects.length > 0 ? (

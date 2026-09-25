@@ -6,11 +6,13 @@ import { ProjectForm } from "@/components/admin/ProjectForm";
 import { ProjectUpdates } from "@/components/admin/ProjectUpdates";
 import { maySee, readAdminContext } from "@/lib/auth/admin-page";
 import { toObjectId } from "@/lib/mongo-oid";
+import { spendLine } from "@/lib/project-spend";
 import {
   MANAGE_WORKS,
   getProject,
   listProjectUpdates,
   sortUpdatesNewestFirst,
+  spendOfProject,
   toAdminProjectUpdate,
   toProjectFormValues,
 } from "@/lib/projects";
@@ -35,9 +37,11 @@ export default async function EditWorkPage({ params }: { params: Promise<{ id: s
   const doc = await getProject(projectId);
   if (!doc) notFound();
 
-  const updates = sortUpdatesNewestFirst(await listProjectUpdates(projectId)).map(
-    toAdminProjectUpdate,
-  );
+  const [updateDocs, spent] = await Promise.all([
+    listProjectUpdates(projectId),
+    spendOfProject(projectId),
+  ]);
+  const updates = sortUpdatesNewestFirst(updateDocs).map(toAdminProjectUpdate);
 
   return (
     <div className="space-y-8">
@@ -52,6 +56,15 @@ export default async function EditWorkPage({ params }: { params: Promise<{ id: s
             >
               /works/{doc.slug}
             </Link>
+          </p>
+          {/* Read-only on purpose: the figure below is the ledger's own sum, and a
+              box here would be a second place for the same money to be typed. */}
+          <p className="mt-1 text-sm text-ink-muted">
+            <span className="text-ink">Spent against this work</span>:{" "}
+            <span className="font-medium tabular-nums">
+              {spendLine(spent, doc.sanctionedAmountPaise)}
+            </span>
+            . Summed from the vouchers the Treasurer keeps — there is no box for it in this form.
           </p>
         </div>
       </div>

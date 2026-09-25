@@ -82,12 +82,12 @@ export type NoticeDetail =
   | { state: "unavailable" };
 
 /**
- * One work, as the site shows it. There is deliberately no spend figure here:
- * what has been drawn against a work comes out of the ledger in Plan 3, and a
- * card that had room for a typed amount would be a card where an invented one
- * could live. The percentage is the branch's own latest dated report, and null
- * until such a report exists — which the card renders as "not reported yet",
- * never as 0%.
+ * One work, as the site shows it. The sanctioned amount is the branch's own
+ * decision and is typed in the office; what has been spent is never typed — it
+ * is summed from the ledger each time a work is read, so a page cannot publish an
+ * amount no treasurer entered. The percentage is the branch's own latest dated
+ * report, and null until such a report exists — which the card renders as "not
+ * reported yet", never as 0%.
  */
 export type PublicProject = {
   slug: string;
@@ -103,6 +103,18 @@ export type PublicProject = {
   percentComplete: number | null;
   /** The date of the report that percentage came from; null when there is none. */
   reportedOn: string | null;
+  /**
+   * What the vouchers naming this work have paid out, across every year the
+   * branch keeps. Null only when the ledger could not be read — a work nobody
+   * has drawn against shows ₹0, which is a fact, not a gap.
+   */
+  spentPaise: number | null;
+  /**
+   * That spend as a share of what was sanctioned, so a bar can be drawn beside
+   * the progress one. It passes 100 when the work has cost more than the branch
+   * sanctioned, and is null when nothing was sanctioned to be a share of.
+   */
+  budgetSharePct: number | null;
 };
 
 /** One dated line on the progress timeline, newest first. */

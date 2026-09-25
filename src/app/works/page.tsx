@@ -21,7 +21,7 @@ export default async function WorksPage() {
       <PageHeader
         eyebrow="Work progress"
         title="Works and projects"
-        description="Each work shows what was sanctioned for it and the percentage the branch reported on its latest dated visit to the site. What has been spent comes from the accounts, and appears with them."
+        description="Each work shows what was sanctioned for it, what the branch's vouchers have paid out against it, and the percentage the branch reported on its latest dated visit to the site."
       />
 
       {works.state === "unavailable" ? <SectionUnavailable what="Works" /> : null}

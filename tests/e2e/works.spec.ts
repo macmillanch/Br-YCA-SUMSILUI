@@ -117,11 +117,14 @@ test("an editor records a work and two dated reports, and the page tells them ap
   await expect(timeline.locator("li").nth(1)).toContainText("10 August 2026");
 
   // What was sanctioned is the branch's own figure; what has been spent is the
-  // ledger's, and Plan 3 has not filled it in yet.
-  await expect(page.getByRole("table", { name: /money involved/i })).toContainText("₹2,50,000");
-  await expect(page.getByRole("table", { name: /money involved/i })).toContainText(
-    "Published with the accounts",
-  );
+  // ledger's, summed from the vouchers naming this work. Nothing has been booked
+  // against it, and the page says ₹0 rather than leaving the row out.
+  const money = page.getByRole("table", { name: /money involved/i });
+  await expect(money).toContainText("₹2,50,000");
+  await expect(money).toContainText("₹0 of ₹2,50,000");
+  // The share sits under the table, not in it, and it is the ledger's answer,
+  // not the branch's claim about how built the work is: 60% built, 0% paid.
+  await expect(page.getByRole("main")).toContainText("0% of the sanctioned amount");
 
   expect(editUrl).toMatch(/\/admin\/works\/[0-9a-f]{24}$/);
 });

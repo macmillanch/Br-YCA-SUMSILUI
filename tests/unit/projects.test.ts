@@ -228,31 +228,62 @@ describe("sortUpdatesNewestFirst", () => {
 
 describe("toPublicProject", () => {
   it("shows the percentage the branch last reported", () => {
-    const card = toPublicProject(projectDoc(), latestUpdateOf([updateDoc({ percentComplete: 55 })]));
+    const card = toPublicProject(
+      projectDoc(),
+      latestUpdateOf([updateDoc({ percentComplete: 55 })]),
+      0,
+    );
     expect(card.percentComplete).toBe(55);
     expect(card.sanctionedPaise).toBe(SANCTIONED);
     expect(card.slug).toBe("overhead-water-tank-for-the-upper-lines");
   });
 
   it("says nothing at all about progress when no report exists", () => {
-    const card = toPublicProject(projectDoc(), null);
+    const card = toPublicProject(projectDoc(), null, null);
     expect(card.percentComplete).toBeNull();
     // 0 would read as "the branch has done nothing", which is a claim about the
     // work rather than an admission that it has not been reported yet.
     expect(card.percentComplete).not.toBe(0);
   });
 
-  it("carries no spent figure, because the ledger has not been wired up yet", () => {
-    const card = toPublicProject(projectDoc(), null);
-    // A rupee amount on this payload could only come from the accounts (Plan 3).
-    // Asserting on the serialised card is what keeps a made-up number out of it.
-    expect(JSON.stringify(card)).not.toContain("spent");
+  it("states a clean zero for a work no voucher has drawn against", () => {
+    const card = toPublicProject(projectDoc(), null, 0);
+
+    // The ledger was read and found nothing, which is a fact worth publishing —
+    // it is not the same answer as the one below, where nothing was read at all.
+    expect(card.spentPaise).toBe(0);
+    expect(card.budgetSharePct).toBe(0);
+  });
+
+  it("states no spend and no share when the ledger could not be read", () => {
+    const card = toPublicProject(projectDoc(), null, null);
+
+    expect(card.spentPaise).toBeNull();
+    // A bar drawn from a figure nobody read would be the site inventing an
+    // account, and §9 asks for a sentence instead.
+    expect(card.budgetSharePct).toBeNull();
+  });
+
+  it("says by how much a work has gone past what was sanctioned", () => {
+    const card = toPublicProject(projectDoc(), null, SANCTIONED + SANCTIONED / 2);
+
+    // 150 rather than 100: a work that cost more than the branch sanctioned is
+    // the thing a public account should not hide behind a full bar.
+    expect(card.budgetSharePct).toBe(150);
+  });
+
+  it("gives no share of an amount nobody sanctioned", () => {
+    const card = toPublicProject(projectDoc({ sanctionedAmountPaise: 0 }), null, 500000);
+
+    expect(card.spentPaise).toBe(500000);
+    expect(card.budgetSharePct).toBeNull();
   });
 
   it("keeps a completed work at full bar whatever its last report said", () => {
     const card = toPublicProject(
       projectDoc({ status: "completed", completedDate: "2026-08-30" }),
       latestUpdateOf([updateDoc({ percentComplete: 80 })]),
+      SANCTIONED,
     );
     expect(card.percentComplete).toBe(100);
   });

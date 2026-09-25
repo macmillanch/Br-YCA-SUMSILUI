@@ -1,5 +1,7 @@
 import { ObjectId, type Filter } from "mongodb";
 import { collection } from "@/lib/db";
+import { spendByProjectIds } from "@/lib/finance";
+import { budgetSharePct } from "@/lib/finance-summary";
 import { COLLECTIONS } from "@/lib/index-specs";
 import type { PublicProject, PublicProjectUpdate } from "@/lib/content";
 import type { ProjectDoc, ProjectStatus, ProjectUpdateDoc, Role } from "@/lib/types";
@@ -15,10 +17,13 @@ import {
  *
  * Two numbers describe a work and they come from different places. The sanctioned
  * amount is typed here, because it is the branch's own decision. What has been
- * spent is not — it is summed from the ledger in Plan 3 — so nothing in this
- * module carries a spend figure, and a progress bar on a public page is allowed
- * to show only the percentage the branch reported on a dated line. That is what
- * keeps a bar and an account from ever telling two different stories.
+ * spent is not typed anywhere: it is summed from the vouchers that name the work
+ * (`spendByProjectIds` in `finance.ts`), so a card can never show a figure no
+ * treasurer entered, and the ledger and the work page agree by construction.
+ *
+ * A progress bar is separate again, and stays the branch's own claim: it shows
+ * the percentage reported on a dated line, not a percentage calculated from
+ * money, because a half-paid contractor has not necessarily built half a tank.
  */
 
 export type WriteResult = "written" | "duplicate_slug" | "not_found";
@@ -210,9 +215,15 @@ async function latestUpdatesFor(
   return latest;
 }
 
+/**
+ * A work as a page shows it. `spentPaise` arrives from the ledger as read, which
+ * is why it can be null: `null` and ₹0 are different answers, and only one of
+ * them says the accounts were looked at.
+ */
 export function toPublicProject(
   doc: ProjectDoc,
   latest: ProjectUpdateDoc | null,
+  spentPaise: number | null,
 ): PublicProject {
   return {
     slug: doc.slug,
@@ -228,6 +239,9 @@ export function toPublicProject(
     percentComplete:
       doc.status === "completed" ? 100 : (latest?.percentComplete ?? null),
     reportedOn: latest?.date ?? null,
+    spentPaise,
+    budgetSharePct:
+      spentPaise === null ? null : budgetSharePct(spentPaise, doc.sanctionedAmountPaise),
   };
 }
 
@@ -313,9 +327,26 @@ export async function adminProjectRows(): Promise<AdminProject[]> {
 /* ------------------------------------------------------------ public reads */
 
 /**
- * The works list a visitor sees, in the branch's own order. The latest progress
- * report travels with each one so a card can say how far the work has got — or
- * say nothing, when the branch has not reported it yet.
+ * What one work has cost, read from a spend map that may not have been readable
+ * at all. A key missing from a map that *was* read means no voucher has named
+ * the work, which is a zero; a map that could not be read means nothing was seen,
+ * which is not.
+ */
+function spentOf(spend: Map<string, number> | null, id: ObjectId): number | null {
+  return spend === null ? null : (spend.get(id.toHexString()) ?? 0);
+}
+
+/** One work's spend, asked on its own, for the office screen that edits it. */
+export async function spendOfProject(id: ObjectId): Promise<number | null> {
+  return spentOf(await spendByProjectIds([id]), id);
+}
+
+/**
+ * A page of works with their latest report and their spend beside each one, in
+ * two reads whatever the page turns out to hold. Every public view of a work is
+ * mapped by `toPublicProject` and reads the ledger through `spendByProjectIds`,
+ * so the card, the detail page and the front page cannot offer three figures for
+ * one set of accounts.
  */
 export async function publicProjects(
   status?: ProjectStatus,
@@ -324,9 +355,12 @@ export async function publicProjects(
   const projects = await collection<ProjectDoc>(COLLECTIONS.projects);
   const query: Filter<ProjectDoc> = status ? { status } : {};
   const docs = await projects.find(query).sort({ order: 1, createdAt: -1 }).limit(limit).toArray();
+  const ids = docs.map((doc) => doc._id);
 
-  const latest = await latestUpdatesFor(docs.map((doc) => doc._id));
-  return docs.map((doc) => toPublicProject(doc, latest.get(doc._id.toHexString()) ?? null));
+  const [spend, latest] = await Promise.all([spendByProjectIds(ids), latestUpdatesFor(ids)]);
+  return docs.map((doc) =>
+    toPublicProject(doc, latest.get(doc._id.toHexString()) ?? null, spentOf(spend, doc._id)),
+  );
 }
 
 export async function publicProjectBySlug(
@@ -336,9 +370,15 @@ export async function publicProjectBySlug(
   const doc = await projects.findOne({ slug });
   if (!doc) return null;
 
-  const updates = await listProjectUpdates(doc._id);
+  // The timeline this page prints also holds the report the card's percentage
+  // would have been taken from, so it is read once rather than looked for twice.
+  const [updates, spend] = await Promise.all([
+    listProjectUpdates(doc._id),
+    spendByProjectIds([doc._id]),
+  ]);
+
   return {
-    project: toPublicProject(doc, latestUpdateOf(updates)),
+    project: toPublicProject(doc, latestUpdateOf(updates), spentOf(spend, doc._id)),
     updates: updates.map(toPublicProjectUpdate),
   };
 }

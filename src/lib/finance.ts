@@ -2,6 +2,7 @@ import { ObjectId, type Document } from "mongodb";
 import { collection } from "@/lib/db";
 import { COLLECTIONS } from "@/lib/index-specs";
 import { categoryLabel } from "@/lib/finance-categories";
+import { spendByProject } from "@/lib/finance-summary";
 import { istCalendarDate, longDate } from "@/lib/dates";
 import { fiscalYearFromLabel, fiscalYearOf } from "@/lib/fiscal-year";
 import { formatPaise } from "@/lib/money";
@@ -479,6 +480,41 @@ export async function listTransactions(filter: TransactionFilter): Promise<Trans
     .sort({ date: 1, _id: 1 })
     .limit(filter.limit ?? LEDGER_LIMIT)
     .toArray();
+}
+
+/**
+ * What each of these works has cost, in paise, summed from the vouchers that
+ * name it.
+ *
+ * Every year the branch keeps counts, not the current one alone: a work that ran
+ * across 1 April did not become cheaper because the accounts began again. Money
+ * received is left out of the total by `spendByProject`, so a grant taken for a
+ * work never reads as money spent on it.
+ *
+ * `null` is the answer that says the ledger could not be read. It is not the
+ * same fact as an empty map, which says it was read and nothing has been drawn
+ * against the work — and only the second of the two entitles a page to print ₹0.
+ */
+export async function spendByProjectIds(
+  ids: readonly ObjectId[],
+): Promise<Map<string, number> | null> {
+  if (ids.length === 0) return new Map();
+
+  const transactions = await transactionsCollection();
+  // One more than the total is prepared to add up: a figure that quietly left
+  // vouchers out would be a wrong number published as a right one.
+  const rows = await transactions
+    .find({ projectId: { $in: [...ids] }, type: "expense" })
+    .limit(LEDGER_LIMIT + 1)
+    .toArray();
+
+  if (rows.length > LEDGER_LIMIT) {
+    console.error(
+      "the ledger is larger than the works page will add up; reporting no figure rather than part of one",
+    );
+    return null;
+  }
+  return spendByProject(rows);
 }
 
 /**
