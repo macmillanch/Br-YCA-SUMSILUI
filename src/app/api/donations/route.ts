@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { fail, fromError, ok, validationFail } from "@/lib/api-response";
 import { requireRole } from "@/lib/auth/require-role";
 import {
-  listDonations,
+  adminDonationsPage,
   saveDonation,
   toAdminDonation,
   type DonationRefusal,
@@ -44,8 +44,15 @@ async function refusalFor(refusal: DonationRefusal): Promise<Response> {
 export async function GET(request: NextRequest) {
   try {
     return await requireRole(request, MANAGE_FINANCE, async () => {
-      const donations = await listDonations();
-      return ok({ donations: donations.map(toAdminDonation) });
+      const page = await adminDonationsPage();
+      if (page.state === "unavailable") {
+        return fail(
+          503,
+          "unavailable",
+          "The contributions could not be read. Nothing has changed — please try again.",
+        );
+      }
+      return ok({ donations: page.items });
     });
   } catch (error) {
     return fromError(error);
@@ -68,7 +75,7 @@ export async function POST(request: NextRequest) {
       if (written.result !== "written") return await refusalFor(written);
 
       invalidateFinance();
-      return ok({ donation: toAdminDonation(written.donation) });
+      return ok({ donation: toAdminDonation(written.donation, parsed.data.voucherNo) });
     });
   } catch (error) {
     return fromError(error);

@@ -4,6 +4,7 @@ import {
   DONATION_VISIBILITY_FILTER,
   buildDonationDoc,
   donationTransactionInput,
+  donationsPageOf,
   editDonation,
   removeDonation,
   saveDonation,
@@ -208,14 +209,63 @@ describe("toAcknowledgedDonation", () => {
 
 describe("toAdminDonation", () => {
   it("carries the id a form posts back, and keeps the record's own links off the wire", () => {
-    expect(toAdminDonation({ ...donationDoc(), _id: DONATION })).toEqual({
+    expect(toAdminDonation({ ...donationDoc(), _id: DONATION }, "DON-001")).toEqual({
       id: DONATION.toHexString(),
       date: "2026-04-12",
       donorName: "Sri Chakma Welfare Board",
       purpose: "Towards the annual cultural meet",
       amountPaise: 50000000,
       acknowledgePublicly: true,
+      voucherNo: "DON-001",
     });
+  });
+
+  it("keeps the donor's name off the public shape and on the office one", () => {
+    const admin = toAdminDonation(donationDoc(), "DON-001");
+
+    expect(admin).not.toHaveProperty("transactionId");
+    expect(admin).not.toHaveProperty("recordedById");
+  });
+
+  it("says that a voucher could not be read, rather than showing a blank reference", () => {
+    expect(toAdminDonation(donationDoc(), null).voucherNo).toBeNull();
+  });
+});
+
+describe("donationsPageOf", () => {
+  it("pairs each contribution with the voucher standing beside it", () => {
+    const page = donationsPageOf([{ ...donationDoc(), _id: DONATION }], [voucher()]);
+
+    expect(page.state).toBe("ready");
+    if (page.state !== "ready") return;
+    expect(page.items).toEqual([
+      {
+        id: DONATION.toHexString(),
+        date: "2026-04-12",
+        donorName: "Sri Chakma Welfare Board",
+        purpose: "Towards the annual cultural meet",
+        amountPaise: 50000000,
+        acknowledgePublicly: true,
+        voucherNo: "DON-001",
+      },
+    ]);
+  });
+
+  it("takes an empty list as nothing recorded, not as a failed read", () => {
+    expect(donationsPageOf([], [])).toEqual({ state: "ready", items: [] });
+  });
+
+  it("calls the list unreadable when either half of the pair could not be read", () => {
+    expect(donationsPageOf(null, [voucher()])).toEqual({ state: "unavailable" });
+    expect(donationsPageOf([donationDoc()], null)).toEqual({ state: "unavailable" });
+  });
+
+  it("reports a contribution whose ledger line has gone, without inventing a reference", () => {
+    const page = donationsPageOf([donationDoc()], []);
+
+    expect(page.state).toBe("ready");
+    if (page.state !== "ready") return;
+    expect(page.items[0]?.voucherNo).toBeNull();
   });
 });
 

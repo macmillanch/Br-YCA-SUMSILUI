@@ -6,7 +6,7 @@ import {
   insertTransaction,
   removeTransaction,
   replaceTransaction,
-  type DonationLinkedWrite,
+  type TransactionWriteOptions,
   type TransactionInsert,
   type TransactionWrite,
 } from "@/lib/finance";
@@ -15,7 +15,7 @@ import type {
   TransactionEditInput,
   TransactionInput,
 } from "@/lib/validation/finance";
-import type { DonationDoc } from "@/lib/types";
+import type { DonationDoc, TransactionDoc } from "@/lib/types";
 
 /**
  * A contribution, and the ledger line it has to leave behind.
@@ -58,7 +58,7 @@ export type DonationStores = {
     id: ObjectId,
     edit: TransactionEditInput,
     byId: ObjectId,
-    options: DonationLinkedWrite,
+    options: TransactionWriteOptions,
   ) => Promise<TransactionWrite>;
   deleteTransaction: (id: ObjectId) => Promise<unknown>;
   findDonation: (id: ObjectId) => Promise<DonationDoc | null>;
@@ -143,6 +143,12 @@ export function toAcknowledgedDonation(doc: DonationDoc): AcknowledgedDonation {
  * form posts back and the answer about publishing the name. The voucher's own
  * id stays off — a donation screen changes it through this record, never by
  * naming a ledger line.
+ *
+ * The voucher *number* does come across, because a correction has to send it
+ * back: the paper reference is part of the entry the auditor checks, and a form
+ * that could not show it would be a form that asked the treasurer to remember a
+ * figure they are looking at. `null` says the ledger line could not be read, so
+ * the screen can say so too rather than offering an empty box.
  */
 export type AdminDonation = {
   id: string;
@@ -151,9 +157,10 @@ export type AdminDonation = {
   purpose: string;
   amountPaise: number;
   acknowledgePublicly: boolean;
+  voucherNo: string | null;
 };
 
-export function toAdminDonation(doc: DonationDoc): AdminDonation {
+export function toAdminDonation(doc: DonationDoc, voucherNo: string | null): AdminDonation {
   return {
     id: doc._id.toHexString(),
     date: doc.date,
@@ -161,6 +168,34 @@ export function toAdminDonation(doc: DonationDoc): AdminDonation {
     purpose: doc.purpose,
     amountPaise: doc.amountPaise,
     acknowledgePublicly: doc.acknowledgePublicly,
+    voucherNo,
+  };
+}
+
+/**
+ * The three answers the office screen can get, decided from what the two reads
+ * returned rather than from what they threw (§9).
+ *
+ * A contribution and its voucher are one pair, so a list that found one without
+ * the other is not offered as a complete book: the row says its ledger line is
+ * missing and stops there. Nothing is editable from that row, because a change
+ * would have to name a voucher that is not there — but it can be removed, and
+ * removing it takes the pair back together, which is the one repair available.
+ */
+export type AdminDonationsPage =
+  | { state: "ready"; items: AdminDonation[] }
+  | { state: "unavailable" };
+
+export function donationsPageOf(
+  docs: readonly DonationDoc[] | null,
+  vouchers: readonly Pick<TransactionDoc, "_id" | "voucherNo">[] | null,
+): AdminDonationsPage {
+  if (docs === null || vouchers === null) return { state: "unavailable" };
+
+  const byId = new Map(vouchers.map((doc) => [doc._id.toHexString(), doc.voucherNo]));
+  return {
+    state: "ready",
+    items: docs.map((doc) => toAdminDonation(doc, byId.get(doc.transactionId.toHexString()) ?? null)),
   };
 }
 
@@ -254,6 +289,39 @@ export async function removeDonation(
 export async function listDonations(): Promise<DonationDoc[]> {
   const donations = await collection<DonationDoc>(COLLECTIONS.donations);
   return donations.find({}).sort({ date: -1 }).limit(500).toArray();
+}
+
+/**
+ * The office list, each contribution with its voucher reference beside it.
+ *
+ * Two reads, because the number a receipt carries is kept on the ledger line
+ * rather than on the donation. Either half failing is the whole list failing: a
+ * screen that showed names without their references, or references without
+ * names, would be showing §6's drift instead of preventing it.
+ */
+export async function adminDonationsPage(): Promise<AdminDonationsPage> {
+  let docs: DonationDoc[];
+  try {
+    docs = await listDonations();
+  } catch (error) {
+    console.error("the contributions could not be read", error);
+    return { state: "unavailable" };
+  }
+  if (docs.length === 0) return donationsPageOf(docs, []);
+
+  try {
+    const transactions = await collection<TransactionDoc>(COLLECTIONS.transactions);
+    const vouchers = await transactions
+      .find(
+        { _id: { $in: docs.map((doc) => doc.transactionId) } },
+        { projection: { voucherNo: 1 } },
+      )
+      .toArray();
+    return donationsPageOf(docs, vouchers);
+  } catch (error) {
+    console.error("the vouchers beside the contributions could not be read", error);
+    return donationsPageOf(docs, null);
+  }
 }
 
 /** The public list: only names whose owners agreed to see them here. */

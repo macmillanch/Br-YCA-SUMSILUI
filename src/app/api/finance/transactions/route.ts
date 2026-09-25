@@ -8,6 +8,7 @@ import {
   lockedYearMessage,
   namesForTransactions,
   toAdminTransaction,
+  workTitlesFor,
 } from "@/lib/finance";
 import { invalidateFinance } from "@/lib/invalidate";
 import { toObjectId } from "@/lib/mongo-oid";
@@ -58,8 +59,13 @@ export async function GET(request: NextRequest) {
         category: parsed.data.category,
         search: parsed.data.q,
       });
-      const names = await namesForTransactions(rows);
-      return ok({ transactions: rows.map((row) => toAdminTransaction(row, names)) });
+      const [names, titles] = await Promise.all([
+        namesForTransactions(rows),
+        workTitlesFor(rows),
+      ]);
+      return ok({
+        transactions: rows.map((row) => toAdminTransaction(row, names, titles)),
+      });
     });
   } catch (error) {
     return fromError(error);
@@ -91,8 +97,11 @@ export async function POST(request: NextRequest) {
 
       invalidateFinance();
       const transaction = written.transaction;
-      const names = await namesForTransactions([transaction]);
-      return ok({ transaction: toAdminTransaction(transaction, names) });
+      const [names, titles] = await Promise.all([
+        namesForTransactions([transaction]),
+        workTitlesFor([transaction]),
+      ]);
+      return ok({ transaction: toAdminTransaction(transaction, names, titles) });
     });
   } catch (error) {
     return fromError(error);

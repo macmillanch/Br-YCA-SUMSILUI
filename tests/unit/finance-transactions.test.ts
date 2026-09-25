@@ -4,6 +4,7 @@ import {
   buildTransactionDoc,
   describeChanges,
   guardWriteFor,
+  toAdminTransaction,
   transactionDateOutOfYear,
 } from "@/lib/finance";
 import type { DonationDoc, FinancialYearDoc, TransactionDoc } from "@/lib/types";
@@ -229,6 +230,24 @@ describe("describeChanges", () => {
     expect(changes[0]?.to).toContain(workId.toHexString().slice(0, 6));
   });
 
+  it("names the work by its title when the caller has read one", () => {
+    // Half an id belongs in a trail nobody can look up; the branch's own name for
+    // the work is what a reader of the trail can check.
+    const workId = new ObjectId();
+    const after = transactionDoc({ ...voucher({ projectId: workId.toHexString() }) });
+    const changes = describeChanges(transactionDoc(), after, new Map([
+      [workId.toHexString(), "Solar lighting for the prayer hall"],
+    ]));
+    expect(changes[0]?.to).toBe("Solar lighting for the prayer hall");
+  });
+
+  it("falls back to half an id when the work has since gone", () => {
+    const workId = new ObjectId();
+    const after = transactionDoc({ ...voucher({ projectId: workId.toHexString() }) });
+    const changes = describeChanges(transactionDoc(), after, new Map());
+    expect(changes[0]?.to).toContain(workId.toHexString().slice(0, 6));
+  });
+
   /** `updatedAt` and `revisions` move on every edit; saying so would hide the change. */
   it("leaves the bookkeeping out of the trail", () => {
     const before = transactionDoc();
@@ -300,8 +319,7 @@ describe("LEDGER_QUERY_SCHEMA", () => {
   });
 });
 
-describe("SUMMARY_QUERY_SCHEMA", () => {
-  it("asks for the year a visitor would call this one when no year is given", () => {
+describe("SUMMARY_QUERY_SCHEMA", () => {  it("asks for the year a visitor would call this one when no year is given", () => {
     const parsed = SUMMARY_QUERY_SCHEMA.safeParse({});
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.year).toBeUndefined();
@@ -320,5 +338,42 @@ describe("SUMMARY_QUERY_SCHEMA", () => {
     expect(SUMMARY_QUERY_SCHEMA.safeParse({ year: new ObjectId().toHexString() }).success).toBe(
       false,
     );
+  });
+});
+
+/**
+ * A voucher as the treasurer's own book shows it — the work it was paid against
+ * named, because the screen lists a year's vouchers in date order and a hex
+ * string tells nobody anything at a glance.
+ */
+describe("toAdminTransaction", () => {
+  it("names the work a voucher was paid against", () => {
+    const workId = new ObjectId();
+    const row = toAdminTransaction(
+      transactionDoc({ ...voucher({ projectId: workId.toHexString() }) }),
+      new Map(),
+      new Map([[workId.toHexString(), "Community hall repairs"]]),
+    );
+    expect(row.projectId).toBe(workId.toHexString());
+    expect(row.projectName).toBe("Community hall repairs");
+  });
+
+  it("leaves a voucher that belongs to no work saying so", () => {
+    const row = toAdminTransaction(transactionDoc(), new Map(), new Map());
+    expect(row.projectId).toBeNull();
+    expect(row.projectName).toBeNull();
+  });
+
+  it("keeps the id when the work has since been removed", () => {
+    // A work can be removed while vouchers still stand against it. Blanketing
+    // those in as "no work" would silently reclassify money the branch spent.
+    const workId = new ObjectId();
+    const row = toAdminTransaction(
+      transactionDoc({ ...voucher({ projectId: workId.toHexString() }) }),
+      new Map(),
+      new Map(),
+    );
+    expect(row.projectId).toBe(workId.toHexString());
+    expect(row.projectName).toBeNull();
   });
 });

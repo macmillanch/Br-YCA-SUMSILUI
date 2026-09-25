@@ -8,6 +8,7 @@ import {
   removeTransaction,
   replaceTransaction,
   toAdminTransaction,
+  workTitlesFor,
   type TransactionWrite,
 } from "@/lib/finance";
 import { invalidateFinance } from "@/lib/invalidate";
@@ -62,8 +63,11 @@ export async function PATCH(
       if (saved.result !== "written") return await refusalFor(saved);
 
       invalidateFinance();
-      const names = await namesForTransactions([saved.transaction]);
-      return ok({ transaction: toAdminTransaction(saved.transaction, names) });
+      const [names, titles] = await Promise.all([
+        namesForTransactions([saved.transaction]),
+        workTitlesFor([saved.transaction]),
+      ]);
+      return ok({ transaction: toAdminTransaction(saved.transaction, names, titles) });
     });
   } catch (error) {
     return fromError(error);

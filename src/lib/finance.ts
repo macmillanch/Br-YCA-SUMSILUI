@@ -2,13 +2,21 @@ import { ObjectId, type Document } from "mongodb";
 import { collection } from "@/lib/db";
 import { COLLECTIONS } from "@/lib/index-specs";
 import { categoryLabel } from "@/lib/finance-categories";
-import { spendByProject } from "@/lib/finance-summary";
+import {
+  spendByProject,
+  summarise,
+  totalsByCategory,
+  type CategoryTotal,
+  type FinanceTotals,
+  type LedgerRow,
+} from "@/lib/finance-summary";
 import { istCalendarDate, longDate } from "@/lib/dates";
 import { fiscalYearFromLabel, fiscalYearOf } from "@/lib/fiscal-year";
 import { formatPaise } from "@/lib/money";
 import type {
   DonationDoc,
   FinancialYearDoc,
+  ProjectDoc,
   Role,
   TransactionCategory,
   TransactionDoc,
@@ -123,6 +131,33 @@ async function yearsCollection() {
 export async function listFinancialYears(): Promise<FinancialYearDoc[]> {
   const years = await yearsCollection();
   return years.find({}).sort({ startDate: -1 }).limit(60).toArray();
+}
+
+/**
+ * The years whose accounts stand closed, in the order the list is kept.
+ *
+ * A screen that asks for a date has to say which dates will be refused, and the
+ * only years it may name are the ones that are actually shut — a guess here
+ * would talk the treasurer out of a year that is open.
+ */
+export function closedLabelsOf(
+  docs: readonly Pick<FinancialYearDoc, "label" | "locked">[],
+): string[] {
+  return docs.filter((doc) => doc.locked).map((doc) => doc.label);
+}
+
+export function openLabelsOf(
+  docs: readonly Pick<FinancialYearDoc, "label" | "locked">[],
+): string[] {
+  return docs.filter((doc) => !doc.locked).map((doc) => doc.label);
+}
+
+export async function yearLabelsByLock(): Promise<{
+  closed: string[];
+  open: string[];
+}> {
+  const docs = await listFinancialYears();
+  return { closed: closedLabelsOf(docs), open: openLabelsOf(docs) };
 }
 
 export async function getFinancialYear(id: ObjectId): Promise<FinancialYearDoc | null> {
@@ -280,12 +315,137 @@ export function toAdminYear(doc: FinancialYearDoc): AdminFinancialYear {
 }
 
 /**
+ * The treasurer's list of years. The four figures come from `summarise` — the
+ * same arithmetic the public pages print — so the office screen and the page a
+ * member reads cannot offer two different closings for one set of vouchers.
+ *
+ * `entryCount` travels with the row because a year with vouchers in it cannot be
+ * deleted (§9), and a screen that knows the count can say so before the treasurer
+ * is refused.
+ */
+export type AdminYearRow = AdminFinancialYear & {
+  incomePaise: number;
+  expensePaise: number;
+  closingPaise: number;
+  entryCount: number;
+};
+
+export function toAdminYearRow(
+  doc: FinancialYearDoc,
+  rows: readonly LedgerRow[],
+): AdminYearRow {
+  const totals = summarise(doc.openingBalancePaise, rows);
+  return {
+    ...toAdminYear(doc),
+    incomePaise: totals.incomePaise,
+    expensePaise: totals.expensePaise,
+    closingPaise: totals.closingPaise,
+    entryCount: rows.length,
+  };
+}
+
+/**
+ * Every year the branch keeps, with its own vouchers added up beside it.
+ *
+ * The years are few — one a year, at most a handful open at a time — so reading
+ * each one's ledger separately is cheaper to reason about than one grouped query,
+ * and a page that shows three years must not quietly total them together.
+ */
+export async function adminYearRows(): Promise<AdminYearRow[]> {
+  const years = await listFinancialYears();
+  const ledgers = await Promise.all(
+    years.map(async (year) => listTransactions({ yearId: year._id })),
+  );
+  return years.map((year, index) => toAdminYearRow(year, ledgers[index] ?? []));
+}
+
+/**
+ * One year as the treasurer's own screen opens it: the year, its four figures,
+ * each side broken into heads, and the sentence that explains a lock.
+ *
+ * The state is decided from what the reads *returned*, not from what they threw,
+ * following the public pages' rule (§9): "this year has no vouchers" and "this
+ * year's vouchers could not be read" are different claims, and neither is the
+ * same as a year the branch never opened. The distinction matters most on a
+ * closed year — a screen that fell back to an empty list would be reporting the
+ * branch's signed-off accounts as blank.
+ */
+export type AdminYearReady = {
+  state: "ready";
+  year: AdminFinancialYear;
+  totals: FinanceTotals;
+  income: CategoryTotal[];
+  expense: CategoryTotal[];
+  entryCount: number;
+  /** null while the year takes vouchers; whose decision closed it, once locked. */
+  lockMessage: string | null;
+};
+
+export type AdminYearPage =
+  | AdminYearReady
+  /** `year` is null only when the year itself could not be read. */
+  | { state: "unavailable"; year: AdminFinancialYear | null }
+  | { state: "missing" };
+
+export function toAdminYearPage(
+  doc: FinancialYearDoc | null,
+  rows: readonly LedgerRow[] | null,
+  lockedByName: string | null = null,
+): AdminYearPage {
+  if (!doc) return { state: "missing" };
+  if (rows === null) return { state: "unavailable", year: toAdminYear(doc) };
+
+  return {
+    state: "ready",
+    year: toAdminYear(doc),
+    totals: summarise(doc.openingBalancePaise, rows),
+    income: totalsByCategory(rows, "income"),
+    expense: totalsByCategory(rows, "expense"),
+    entryCount: rows.length,
+    lockMessage: doc.locked ? lockMessage(doc, lockedByName) : null,
+  };
+}
+
+/**
+ * One year read for the treasurer's book: the page's state and figures, and the
+ * vouchers themselves so the screen that lists them needn't read them twice.
+ *
+ * A year the branch never opened and a year it could not read are answered
+ * apart, and the vouchers are only ever handed over together with figures that
+ * were actually added up from them — an empty list arrives only with a year that
+ * genuinely has nothing in it.
+ */
+export type AdminYearRead = { page: AdminYearPage; docs: TransactionDoc[] };
+
+export async function adminYearPage(label: string): Promise<AdminYearRead> {
+  let doc: FinancialYearDoc | null;
+  try {
+    doc = await getFinancialYearByLabel(label);
+  } catch (error) {
+    console.error(`the accounts for ${label} could not be read`, error);
+    return { page: { state: "unavailable", year: null }, docs: [] };
+  }
+
+  if (!doc) return { page: { state: "missing" }, docs: [] };
+
+  try {
+    const [docs, byName] = await Promise.all([
+      listTransactions({ yearId: doc._id }),
+      lockedByNameOf(doc),
+    ]);
+    return { page: toAdminYearPage(doc, docs, byName), docs };
+  } catch (error) {
+    console.error(`the vouchers for ${doc.label} could not be read`, error);
+    return { page: toAdminYearPage(doc, null), docs: [] };
+  }
+}
+
+/**
  * The name beside a lock. An account that has since been removed is not
  * resurrected under a guess — the message says who closed it when it can, and
  * says nothing more when it cannot.
  */
-export async function lockedByNameOf(doc: FinancialYearDoc): Promise<string | null> {
-  if (!doc.lockedById) return null;
+export async function lockedByNameOf(doc: FinancialYearDoc): Promise<string | null> {  if (!doc.lockedById) return null;
   const user = await findUserById(doc.lockedById);
   return user?.name ?? null;
 }
@@ -301,7 +461,6 @@ export async function lockedYearMessage(year: FinancialYearDoc): Promise<string>
 }
 
 /* ---------------------------------------------------------- transactions */
-
 /** A voucher is looked for by its day, oldest first — the way a cash book reads. */
 const LEDGER_LIMIT = 5000;
 
@@ -397,7 +556,7 @@ export function buildTransactionDoc(
  */
 const TRAIL_FIELDS: readonly {
   field: string;
-  value: (doc: TransactionDoc, titleOfWork?: (id: string) => string) => string;
+  value: (doc: TransactionDoc, titles?: Map<string, string>) => string;
 }[] = [
   { field: "Date", value: (doc) => doc.date },
   { field: "Direction", value: (doc) => (doc.type === "income" ? "Income" : "Expenditure") },
@@ -405,19 +564,19 @@ const TRAIL_FIELDS: readonly {
   { field: "Voucher number", value: (doc) => doc.voucherNo },
   { field: "Description", value: (doc) => doc.description },
   { field: "Party", value: (doc) => doc.party },
-  { field: "Work", value: (doc, titleOfWork) => workLabel(doc, titleOfWork) },
+  { field: "Work", value: (doc, titles) => workLabel(doc, titles) },
   { field: "Amount", value: (doc) => formatPaise(doc.amountPaise) },
 ];
 
 /**
- * A work is named by its title when the caller knows one, and by the beginning
- * of its id when it does not. Half an id in an audit trail is honest; a guessed
- * name is not.
+ * A work is named by its title when the caller has read one, and by the beginning
+ * of its id when it does not — the work may have been removed since the voucher
+ * was written. Half an id in an audit trail is honest; a guessed name is not.
  */
-function workLabel(doc: TransactionDoc, titleOfWork?: (id: string) => string): string {
+function workLabel(doc: TransactionDoc, titles?: Map<string, string>): string {
   if (!doc.projectId) return "No work";
   const hex = doc.projectId.toHexString();
-  return titleOfWork?.(hex) ?? `Work ${hex.slice(0, 6)}`;
+  return titles?.get(hex) ?? `Work ${hex.slice(0, 6)}`;
 }
 
 /**
@@ -428,12 +587,12 @@ function workLabel(doc: TransactionDoc, titleOfWork?: (id: string) => string): s
 export function describeChanges(
   before: TransactionDoc,
   after: TransactionDoc,
-  titleOfWork?: (id: string) => string,
+  workTitles?: Map<string, string>,
 ): TransactionRevision["changes"] {
   const changes: TransactionRevision["changes"] = [];
   for (const entry of TRAIL_FIELDS) {
-    const from = entry.value(before, titleOfWork);
-    const to = entry.value(after, titleOfWork);
+    const from = entry.value(before, workTitles);
+    const to = entry.value(after, workTitles);
     if (from !== to) changes.push({ field: entry.field, from, to });
   }
   return changes;
@@ -528,7 +687,42 @@ export async function donationOwningTransaction(transactionId: ObjectId): Promis
   return donations.findOne({ transactionId });
 }
 
-export type DonationLinkedWrite = { allowDonationLinked?: boolean };
+/**
+ * What a write may be told beyond the fields it is given: that it comes from the
+ * donations screen, which is the one place a donation's voucher may be changed.
+ * The works a voucher names are not passed in — a trail that named a work only
+ * when the caller happened to remember would be a trail that sometimes names
+ * nothing.
+ */
+export type TransactionWriteOptions = {
+  allowDonationLinked?: boolean;
+};
+
+/**
+ * The titles of the works a set of vouchers was spent against.
+ *
+ * The ledger records a spending against a work, so a trail that could only say
+ * `Work 3f9a1c` would be one nobody can read a month later. This reaches into
+ * the works collection directly rather than through the works module, which
+ * reads the ledger — the two directions would be a cycle.
+ */
+async function titlesOfProjectIds(ids: readonly ObjectId[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.map((id) => id.toHexString()))];
+  if (unique.length === 0) return new Map();
+
+  const projects = await collection<ProjectDoc>(COLLECTIONS.projects);
+  const docs = await projects
+    .find({ _id: { $in: unique.map((id) => new ObjectId(id)) } }, { projection: { title: 1 } })
+    .toArray();
+  return new Map(docs.map((doc) => [doc._id.toHexString(), doc.title]));
+}
+
+/** The titles behind one page's worth of vouchers, looked up once for the list. */
+export async function workTitlesFor(
+  docs: readonly TransactionDoc[],
+): Promise<Map<string, string>> {
+  return titlesOfProjectIds(docs.flatMap((doc) => (doc.projectId ? [doc.projectId] : [])));
+}
 
 /**
  * An insert can be refused for two reasons only — no year covers the day, or the
@@ -581,7 +775,7 @@ export async function replaceTransaction(
   id: ObjectId,
   input: TransactionEditInput,
   byId: ObjectId,
-  options: DonationLinkedWrite = {},
+  options: TransactionWriteOptions = {},
 ): Promise<TransactionWrite> {
   const transactions = await transactionsCollection();
   const before = await transactions.findOne({ _id: id });
@@ -610,7 +804,11 @@ export async function replaceTransaction(
   if (guard === "linked_donation") return { result: "linked_donation" };
 
   const after = buildTransactionDoc(input, target._id, byId, before);
-  const changes = describeChanges(before, after);
+  // Read here rather than accepting a map from the caller: a trail that named a
+  // work only when whoever called happened to pass titles would be a trail that
+  // sometimes says "Work 3f9a1c" to a treasurer who cannot look it up.
+  const titles = await titlesOfProjectIds([before.projectId, after.projectId].flatMap((id) => (id ? [id] : [])));
+  const changes = describeChanges(before, after, titles);
   if (changes.length === 0) return { result: "written", transaction: before };
 
   const revision: TransactionRevision = {
@@ -635,7 +833,7 @@ export async function replaceTransaction(
  */
 export async function removeTransaction(
   id: ObjectId,
-  options: DonationLinkedWrite = {},
+  options: TransactionWriteOptions = {},
 ): Promise<TransactionWrite> {
   const transactions = await transactionsCollection();
   const doc = await transactions.findOne({ _id: id });
@@ -675,6 +873,8 @@ export type AdminTransaction = {
   voucherNo: string;
   party: string;
   projectId: string | null;
+  /** The work's title, or null for a voucher that names no work — or one since removed. */
+  projectName: string | null;
   enteredByName: string | null;
   revisions: AdminTransactionRevision[];
 };
@@ -684,11 +884,18 @@ export type AdminTransaction = {
  * head in the words a member would read, and each change with the name of
  * whoever made it. An account that has since left the site gives a `null` the
  * page renders as its own sentence, never the word "null".
+ *
+ * `titles` holds the works this page's vouchers point at, read once for the
+ * whole list. A voucher whose work is missing from it keeps its id and gets a
+ * null title: money was spent against something, and calling that "no work"
+ * would reclassify it without anyone deciding to.
  */
 export function toAdminTransaction(
   doc: TransactionDoc,
   names: Map<string, string>,
+  titles: Map<string, string> = new Map(),
 ): AdminTransaction {
+  const projectId = doc.projectId ? doc.projectId.toHexString() : null;
   return {
     id: doc._id.toHexString(),
     yearId: doc.yearId.toHexString(),
@@ -700,7 +907,8 @@ export function toAdminTransaction(
     amountPaise: doc.amountPaise,
     voucherNo: doc.voucherNo,
     party: doc.party,
-    projectId: doc.projectId ? doc.projectId.toHexString() : null,
+    projectId,
+    projectName: projectId ? titles.get(projectId) ?? null : null,
     enteredByName: doc.entryById ? names.get(doc.entryById.toHexString()) ?? null : null,
     revisions: doc.revisions.map((revision) => ({
       at: revision.at.toISOString(),

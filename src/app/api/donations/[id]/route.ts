@@ -64,7 +64,7 @@ export async function PATCH(
       if (saved.result !== "written") return await refusalFor(saved);
 
       invalidateFinance();
-      return ok({ donation: toAdminDonation(saved.donation) });
+      return ok({ donation: toAdminDonation(saved.donation, parsed.data.voucherNo) });
     });
   } catch (error) {
     return fromError(error);
