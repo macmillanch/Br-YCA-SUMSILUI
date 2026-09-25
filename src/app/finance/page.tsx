@@ -4,14 +4,14 @@ import { FinanceBarChart, type ChartBar } from "@/components/site/FinanceBarChar
 import { FinanceSummary } from "@/components/site/FinanceSummary";
 import { PageHeader } from "@/components/site/EmptyState";
 import { Button } from "@/components/ui/Button";
-import {
-  getFinanceYearDetail,
-  getFinanceYears,
-  type PublicLedgerRow,
-} from "@/lib/content";
+import { getFinanceYearDetail, getFinanceYears } from "@/lib/content";
+import { type PublicLedgerRow } from "@/lib/finance-ledger";
 import { formatPaise } from "@/lib/money";
 
 export const revalidate = 300;
+
+/** The whole ledger is its own page; this one shows the tail of it. */
+const VOUCHERS_ON_SUMMARY_PAGE = 8;
 
 export const metadata: Metadata = {
   title: "Finance",
@@ -87,6 +87,7 @@ export default async function FinancePage({
   const [years, detail] = await Promise.all([getFinanceYears(), getFinanceYearDetail()]);
   const list = years.state === "ready" ? years.items : [];
   const figures = detail.state === "ready" ? detail : null;
+  const recent = figures?.ledger.slice(-VOUCHERS_ON_SUMMARY_PAGE) ?? [];
 
   return (
     <div className="container-page space-y-8 py-10">
@@ -144,7 +145,7 @@ export default async function FinancePage({
               bars={sideBars(figures.snapshot)}
             />
             <p className="text-sm text-ink-muted">
-              {figures.rows.length > 0 ? (
+              {recent.length > 0 ? (
                 <>
                   The full ledger for {figures.year.label} is on its own page, with every voucher and
                   a download for the spreadsheet.
@@ -195,13 +196,13 @@ export default async function FinancePage({
             </div>
           </section>
 
-          {figures.rows.length > 0 ? (
+          {recent.length > 0 ? (
             <section aria-labelledby="finance-recent" className="space-y-4">
               <h2 id="finance-recent" className="text-2xl">
-                The last {figures.rows.length} voucher
-                {figures.rows.length === 1 ? "" : "s"} entered
+                The last {recent.length} voucher
+                {recent.length === 1 ? "" : "s"} entered
               </h2>
-              <VoucherTable rows={figures.rows} />
+              <VoucherTable rows={recent} />
             </section>
           ) : null}
 

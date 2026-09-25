@@ -1,5 +1,6 @@
 import { categoryLabel } from "@/lib/finance-categories";
 import type { FinanceSnapshot } from "@/lib/content";
+import { sumPaise } from "@/lib/money";
 import type { TransactionCategory, TransactionType } from "@/lib/types";
 import type { ObjectId } from "mongodb";
 
@@ -117,4 +118,27 @@ export function spendByProject(rows: readonly LedgerRow[]): Map<string, number> 
 export function budgetSharePct(spentPaise: number, sanctionedPaise: number): number | null {
   if (!Number.isFinite(sanctionedPaise) || sanctionedPaise <= 0) return null;
   return (spentPaise / sanctionedPaise) * 100;
+}
+
+/** A voucher with the year's balance beside it, as a printed cash book shows it. */
+export type BalancedRow<R extends LedgerRow> = R & { runningBalancePaise: number };
+
+/**
+ * The running balance down a ledger printed oldest-first.
+ *
+ * The caller hands these over in date order, because that is the order an
+ * audited cash book reads in; this only walks it. `sumPaise` carries the
+ * arithmetic so a voucher amount that somehow arrived as a fraction is refused
+ * here rather than half-added into a figure the branch publishes.
+ */
+export function withRunningBalance<R extends LedgerRow>(
+  openingBalancePaise: number,
+  rows: readonly R[],
+): BalancedRow<R>[] {
+  let balance = openingBalancePaise;
+
+  return rows.map((row) => {
+    balance = sumPaise([balance, row.type === "income" ? row.amountPaise : -row.amountPaise]);
+    return { ...row, runningBalancePaise: balance };
+  });
 }

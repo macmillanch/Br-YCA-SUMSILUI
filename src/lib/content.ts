@@ -18,9 +18,14 @@ import {
 import {
   summarise,
   totalsByCategory,
+  withRunningBalance,
   type CategoryTotal,
   type LedgerRow,
 } from "@/lib/finance-summary";
+import {
+  type PublicLedgerLine,
+  type PublicLedgerRow,
+} from "@/lib/finance-ledger";
 import { istCalendarDate } from "@/lib/dates";
 import { galleryAlbums, recentGalleryItems, type GalleryAlbum, type PublicGalleryItem } from "@/lib/gallery";
 import { listMembers, toDirectoryRow, toPublicMember } from "@/lib/members";
@@ -612,20 +617,11 @@ export async function getFinanceSummary(label?: string): Promise<FinanceSummaryC
 }
 
 /**
- * One line of the published ledger. The direction travels with it, because a
- * rupee figure that does not say whether money came in or went out is half a
- * record — and the reader is the one left to guess which half.
+ * One line of the published ledger, in the shape `@/lib/finance-ledger` prints
+ * and filters. The direction travels with it, because a rupee figure that does
+ * not say whether money came in or went out is half a record — and the reader is
+ * the one left to guess which half.
  */
-export type PublicLedgerRow = {
-  date: string;
-  voucherNo: string;
-  description: string;
-  party: string;
-  type: TransactionType;
-  categoryLabel: string;
-  amountPaise: number;
-};
-
 function toPublicLedgerRow(doc: TransactionDoc): PublicLedgerRow {
   return {
     date: doc.date,
@@ -633,17 +629,16 @@ function toPublicLedgerRow(doc: TransactionDoc): PublicLedgerRow {
     description: doc.description,
     party: doc.party,
     type: doc.type,
+    category: doc.category,
     categoryLabel: categoryLabel(doc.category),
     amountPaise: doc.amountPaise,
   };
 }
 
-/** The whole ledger is its own page; the summary page shows the tail of it. */
-const VOUCHERS_ON_SUMMARY_PAGE = 8;
-
 /**
  * One year as the public reads it: totals, each side broken into heads, the
- * last few vouchers and the audit report when the branch has saved one.
+ * whole ledger oldest-first with the running balance beside each line, and the
+ * audit report when the branch has saved one.
  *
  * `missing` is for a year the branch has not opened — a typed label, a link from
  * a bookmark, a year deleted since — and is the page's own 404. `unavailable` is
@@ -656,7 +651,7 @@ export type FinanceYearDetail =
       snapshot: FinanceSnapshot;
       income: CategoryTotal[];
       expense: CategoryTotal[];
-      rows: readonly PublicLedgerRow[];
+      ledger: readonly PublicLedgerLine[];
       auditPdfUrl: string | null;
     }
   | { state: "missing" }
@@ -689,7 +684,10 @@ export async function getFinanceYearDetail(label?: string): Promise<FinanceYearD
     snapshot: { yearLabel: year.label, ...summarise(year.openingBalancePaise, rows) },
     income: totalsByCategory(rows, "income"),
     expense: totalsByCategory(rows, "expense"),
-    rows: docs.slice(-VOUCHERS_ON_SUMMARY_PAGE).map(toPublicLedgerRow),
+    ledger: withRunningBalance(
+      year.openingBalancePaise,
+      docs.map(toPublicLedgerRow),
+    ),
     auditPdfUrl: year.auditPdfUrl ?? null,
   };
 }

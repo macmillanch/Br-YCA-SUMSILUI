@@ -5,6 +5,7 @@ import {
   spendByProject,
   summarise,
   totalsByCategory,
+  withRunningBalance,
   type LedgerRow,
 } from "@/lib/finance-summary";
 
@@ -148,5 +149,40 @@ describe("budgetSharePct", () => {
   it("says nothing when nothing was sanctioned", () => {
     expect(budgetSharePct(5000000, 0)).toBeNull();
     expect(budgetSharePct(0, 0)).toBeNull();
+  });
+});
+
+/**
+ * The printed ledger runs oldest-first with a balance beside each line, the way
+ * an audited cash book reads. The balance is the year's own, from the figure the
+ * treasurer opened with, so a filtered view still shows each voucher's true
+ * standing rather than a total of what happens to be on screen.
+ */
+describe("withRunningBalance", () => {
+  it("moves from the opening figure with every voucher in turn", () => {
+    const balanced = withRunningBalance(100000, [
+      row({ amountPaise: 500000 }),
+      row({ type: "expense", category: "event", amountPaise: 120000 }),
+      row({ type: "expense", category: "relief", amountPaise: 500000 }),
+    ]);
+
+    expect(balanced.map((entry) => entry.runningBalancePaise)).toEqual([
+      600000, 480000, -20000,
+    ]);
+  });
+
+  it("leaves the lines it was given in the order it was given them", () => {
+    const rows = [
+      row({ amountPaise: 500000 }),
+      row({ type: "expense", category: "event", amountPaise: 120000 }),
+    ];
+    const balanced = withRunningBalance(0, rows);
+
+    expect(balanced.map((entry) => entry.category)).toEqual(["donation", "event"]);
+    expect(balanced[1]?.amountPaise).toBe(120000);
+  });
+
+  it("has no line at all before the first voucher", () => {
+    expect(withRunningBalance(2500000, [])).toEqual([]);
   });
 });
