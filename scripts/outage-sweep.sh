@@ -96,6 +96,7 @@ sweep)
     /press-releases) wants=("Press releases are temporarily unavailable") ;;
     /works/*) wants=("This work is temporarily unavailable") ;;
     /works) wants=("Works are temporarily unavailable") ;;
+    /gallery) wants=("The photographs are temporarily unavailable") ;;
     esac
     grammar=""
     for want in "${wants[@]}"; do

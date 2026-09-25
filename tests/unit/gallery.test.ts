@@ -3,6 +3,7 @@ import {
   GALLERY_FOLDER,
   MAX_UPLOAD_BYTES,
   detectImageKind,
+  fullSizeUrlFor,
   signatureFor,
   thumbUrlFor,
   uploadRejection,
@@ -98,14 +99,39 @@ describe("signatureFor", () => {
 });
 
 describe("thumbUrlFor", () => {
-  it("serves the grid a display-size picture instead of the original", () => {
+  it("serves the grid a display-size picture at its own shape", () => {
+    // The grid is a masonry of columns, and a column only reads as one while a
+    // portrait picture stays tall. Cropping every picture to the same box would
+    // make the columns even and the word "masonry" a lie about the page.
     expect(thumbUrlFor(base.imageUrl)).toBe(
-      "https://res.cloudinary.com/yca-sumsilui/image/upload/w_600,h_450,c_fill,g_auto,f_auto,q_auto/v1/branch/gallery/agm.jpg",
+      "https://res.cloudinary.com/yca-sumsilui/image/upload/w_600,c_limit,f_auto,q_auto/v1/branch/gallery/agm.jpg",
     );
   });
 
   it("leaves an address that is not the image store's alone", () => {
     expect(thumbUrlFor("https://example.com/a.jpg")).toBe("https://example.com/a.jpg");
+  });
+});
+
+describe("fullSizeUrlFor", () => {
+  it("sends the viewer a readable picture rather than the file as uploaded", () => {
+    // A phone hands back a 4 000-pixel scan. The reader who asked to see the
+    // picture wants it large, not the branch's whole download bill.
+    expect(fullSizeUrlFor(base.imageUrl)).toBe(
+      "https://res.cloudinary.com/yca-sumsilui/image/upload/w_1200,c_limit,f_auto,q_auto/v1/branch/gallery/agm.jpg",
+    );
+  });
+
+  it("never makes a picture larger than the branch took", () => {
+    expect(fullSizeUrlFor(base.imageUrl)).toContain("c_limit");
+  });
+
+  it("leaves an address that is not the image store's alone", () => {
+    expect(fullSizeUrlFor("https://example.com/a.jpg")).toBe("https://example.com/a.jpg");
+  });
+
+  it("leaves an address the store cannot read alone, as the grid does", () => {
+    expect(fullSizeUrlFor("/yca.jpg")).toBe("/yca.jpg");
   });
 });
 
@@ -129,6 +155,9 @@ describe("toPublicGalleryItem", () => {
       alt: base.alt,
       imageUrl: base.imageUrl,
       thumbUrl: thumbUrlFor(base.imageUrl),
+      // The address a reader opens the picture at, worked out alongside the
+      // grid's own copy so the page has no part in deriving either.
+      fullUrl: fullSizeUrlFor(base.imageUrl),
       takenAt: "2026-04-18",
     });
   });

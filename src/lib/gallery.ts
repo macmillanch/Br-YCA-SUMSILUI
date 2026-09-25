@@ -1,7 +1,7 @@
 import { ObjectId, type Filter } from "mongodb";
 import { collection } from "@/lib/db";
 import { COLLECTIONS } from "@/lib/index-specs";
-import { thumbUrlFor } from "@/lib/cloudinary";
+import { fullSizeUrlFor, thumbUrlFor } from "@/lib/cloudinary";
 import type { GalleryItemDoc, Role } from "@/lib/types";
 import type { GalleryItemInput } from "@/lib/validation/gallery";
 
@@ -21,6 +21,8 @@ export type PublicGalleryItem = {
   alt: string;
   imageUrl: string;
   thumbUrl: string;
+  /** Where the viewer opens it: neither the grid's copy nor the raw upload. */
+  fullUrl: string;
   takenAt: string | null;
 };
 
@@ -62,6 +64,10 @@ export function toPublicGalleryItem(doc: GalleryItemDoc): PublicGalleryItem {
     alt: doc.alt,
     imageUrl: doc.imageUrl,
     thumbUrl: doc.thumbUrl,
+    // Derived from the address as taken rather than trusted from the record: the
+    // grid's own copy is stored, but a reader opening a picture should be sent to
+    // a size the store was asked for, not to whatever was written down.
+    fullUrl: fullSizeUrlFor(doc.imageUrl),
     takenAt: doc.takenAt ?? null,
   };
 }

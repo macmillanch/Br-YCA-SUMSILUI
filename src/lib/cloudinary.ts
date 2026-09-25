@@ -26,8 +26,19 @@ export type CloudinaryCredentials = {
 /** Where branch photographs live in the store, so a later cleanup can find them. */
 export const GALLERY_FOLDER = "yca-sumsilui/gallery";
 
-/** Display-size, auto-format, auto-quality: the grid never downloads an original. */
-export const THUMB_TRANSFORM = "w_600,h_450,c_fill,g_auto,f_auto,q_auto";
+/**
+ * The grid's copy: display width, its own shape, and only the format this
+ * reader's browser takes.
+ *
+ * No height and no crop on purpose. The public gallery lays its pictures out in
+ * columns, and a column only reads as one while a portrait picture stays tall —
+ * cut every picture into the same box and the layout is an even grid wearing a
+ * description it does not match.
+ */
+export const THUMB_TRANSFORM = "w_600,c_limit,f_auto,q_auto";
+
+/** The viewer's copy: large enough to read a face in, never the file as taken. */
+export const FULL_SIZE_TRANSFORM = "w_1200,c_limit,f_auto,q_auto";
 
 const SIGNATURE_ALGORITHM = "sha1";
 
@@ -77,25 +88,37 @@ export function signatureFor(params: Record<string, string>, apiSecret: string):
   return createHash(SIGNATURE_ALGORITHM).update(`${toSign}${apiSecret}`).digest("hex");
 }
 
-/** The store's own address, with the thumbnail transformation inserted. */
-export function thumbUrlFor(url: string): string {
+/**
+ * The store's own address, with one transformation written into its path.
+ *
+ * Only the image store understands a transformation there, so rewriting some
+ * other host's address — or an address that is not a full one — would break the
+ * picture rather than resize it.
+ */
+function withTransform(url: string, transform: string): string {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return url;
   }
-  // Only the image store understands a transformation written into its path.
-  // Rewriting some other host's address would break the picture rather than
-  // resize it.
   if (parsed.hostname !== CLOUDINARY_HOST) return url;
   const marker = "/upload/";
   const at = parsed.pathname.indexOf(marker);
   if (at === -1) return url;
   const rest = parsed.pathname.slice(at + marker.length);
-  if (rest.split("/")[0] === THUMB_TRANSFORM) return url;
-  parsed.pathname = `${parsed.pathname.slice(0, at + marker.length)}${THUMB_TRANSFORM}/${rest}`;
+  if (rest.split("/")[0] === transform) return url;
+  parsed.pathname = `${parsed.pathname.slice(0, at + marker.length)}${transform}/${rest}`;
   return parsed.toString();
+}
+
+export function thumbUrlFor(url: string): string {
+  return withTransform(url, THUMB_TRANSFORM);
+}
+
+/** Where the viewer opens a picture: readable, and not the file as uploaded. */
+export function fullSizeUrlFor(url: string): string {
+  return withTransform(url, FULL_SIZE_TRANSFORM);
 }
 
 /**
