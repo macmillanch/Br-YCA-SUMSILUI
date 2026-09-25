@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
-import { PageHeader, SectionUnavailable } from "@/components/site/EmptyState";
+import { EmptyState, PageHeader, SectionUnavailable } from "@/components/site/EmptyState";
 import { getBankDetails, getContactDetails } from "@/lib/content";
+import { getPublicDonations } from "@/lib/donations";
+import { shortDate } from "@/lib/dates";
+import { formatPaise } from "@/lib/money";
 
 export const metadata: Metadata = {
   title: "Donate",
@@ -8,9 +11,19 @@ export const metadata: Metadata = {
     "How to contribute to Young Chakma Association, Sumsilui Branch. Contributions are received by bank transfer; this page does not process payments.",
 };
 
+export const revalidate = 300;
+
+/** The list is a courtesy, not an archive — the published ledger holds every entry. */
+const ACKNOWLEDGEMENTS_SHOWN = 24;
+
 export default async function DonatePage() {
-  const { contact, unavailable: contactUnavailable } = await getContactDetails();
-  const { bank, unavailable: bankUnavailable } = await getBankDetails();
+  const [contactRead, bankRead, acknowledgements] = await Promise.all([
+    getContactDetails(),
+    getBankDetails(),
+    getPublicDonations(ACKNOWLEDGEMENTS_SHOWN),
+  ]);
+  const { contact, unavailable: contactUnavailable } = contactRead;
+  const { bank, unavailable: bankUnavailable } = bankRead;
 
   return (
     <div className="container-page max-w-3xl space-y-8 py-10">
@@ -68,12 +81,79 @@ export default async function DonatePage() {
       </section>
 
       <section aria-labelledby="acknowledgements">
-        <h2 id="acknowledgements">Contributions acknowledged</h2>
+        <h2 id="acknowledgements">Contributions acknowledged with thanks</h2>
         <p className="mt-3 text-[15px] leading-7 text-ink-muted">
           Where a donor has agreed that their name may appear publicly, contributions are listed here
           and every one of them also appears as an income entry in the published ledger, so the list of
           names and the accounts can be checked against each other.
         </p>
+
+        {acknowledgements.state === "unavailable" ? (
+          <div className="mt-4">
+            <SectionUnavailable what="The list of contributions" />
+          </div>
+        ) : null}
+
+        {acknowledgements.state === "empty" ? (
+          <div className="mt-4">
+            <EmptyState
+              title="No names have been listed yet"
+              body="A contribution appears here only once the donor has agreed that their name may be published. Until then the figure stands in the published ledger on its own, and receipts are issued by the Treasurer."
+            />
+          </div>
+        ) : null}
+
+        {acknowledgements.state === "ready" ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-sm">
+              <caption className="sr-only">Contributions the branch is grateful for</caption>
+              <thead>
+                <tr className="border-b-2 border-green-900 text-left">
+                  {(
+                    [
+                      { heading: "Donor", align: "left" },
+                      { heading: "Given for", align: "left" },
+                      { heading: "Day", align: "left" },
+                      { heading: "Amount", align: "right" },
+                    ] as const
+                  ).map((column) => (
+                    <th
+                      key={column.heading}
+                      scope="col"
+                      className={`py-2 pr-4 font-semibold ${
+                        column.align === "right" ? "text-right" : ""
+                      }`}
+                    >
+                      {column.heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {acknowledgements.items.map((item) => (
+                  <tr
+                    key={`${item.date}-${item.donorName}-${item.purpose}`}
+                    className="border-b border-line"
+                  >
+                    <th scope="row" className="py-2.5 pr-4 text-left font-medium">
+                      {item.donorName}
+                    </th>
+                    <td className="py-2.5 pr-4">{item.purpose}</td>
+                    <td className="py-2.5 pr-4 tabular-nums">{shortDate(item.date)}</td>
+                    <td className="py-2.5 text-right tabular-nums text-green-900">
+                      {formatPaise(item.amountPaise)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="mt-3 text-xs leading-5 text-ink-muted">
+              The most recent {ACKNOWLEDGEMENTS_SHOWN} acknowledged contributions. Every contribution
+              the branch has received stands in the ledger for its year, whether or not a name is shown
+              here.
+            </p>
+          </div>
+        ) : null}
       </section>
 
       <section aria-labelledby="other-ways">
