@@ -29,7 +29,13 @@ import {
 import { istCalendarDate } from "@/lib/dates";
 import { galleryAlbums, recentGalleryItems, type GalleryAlbum, type PublicGalleryItem } from "@/lib/gallery";
 import { listMembers, toDirectoryRow, toPublicMember } from "@/lib/members";
-import { getPublishedNoticeBySlug, listPublishedNotices } from "@/lib/notices";
+import {
+  countPublishedNotices,
+  getPublishedNoticeBySlug,
+  listPublishedNotices,
+  listPublishedNoticesWithin,
+} from "@/lib/notices";
+import { pageInfo, type PageInfo } from "@/lib/pagination";
 import { publicProjectBySlug, publicProjects } from "@/lib/projects";
 import type { ObjectId } from "mongodb";
 import type {
@@ -323,6 +329,38 @@ export async function getNotices(kind?: NoticeKind): Promise<PublicRead<PublicNo
     return { state: "unavailable" };
   }
   return published.length > 0 ? { state: "ready", items: published } : { state: "empty" };
+}
+
+/** A page of a list, with the arithmetic the page's own navigation reads. */
+export type PublicPageRead<T> =
+  | { state: "ready"; items: T[]; info: PageInfo }
+  | { state: "empty" }
+  | { state: "unavailable" };
+
+/**
+ * One page of the published notices, newest first.
+ *
+ * The count is read before the page so that a bookmark set when the board was
+ * longer lands on the last page that still exists rather than on a blank screen,
+ * and so the navigation can say what it is one page *of*. Two reads rather than
+ * one, both on the published index, and cheaper than the alternative of loading
+ * the year's notices to show twenty.
+ */
+export async function getNoticesPage(
+  kind: NoticeKind | undefined,
+  page: number,
+  size: number,
+): Promise<PublicPageRead<PublicNotice>> {
+  try {
+    const total = await countPublishedNotices(kind);
+    if (total === 0) return { state: "empty" };
+    const info = pageInfo(page, size, total);
+    const items = await listPublishedNoticesWithin(kind, (info.page - 1) * size, size);
+    return { state: "ready", items, info };
+  } catch (error) {
+    console.error("notices are unavailable", error);
+    return { state: "unavailable" };
+  }
 }
 
 /**

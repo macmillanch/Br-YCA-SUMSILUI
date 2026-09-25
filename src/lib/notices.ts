@@ -123,6 +123,36 @@ export async function listPublishedNotices(kind?: NoticeKind, limit = 50): Promi
   return docs.map(toPublicNotice);
 }
 
+/**
+ * How many published notices a filter holds, so a page of twenty can say what
+ * "of 87" means without the list itself being loaded first.
+ */
+export async function countPublishedNotices(kind?: NoticeKind): Promise<number> {
+  const notices = await collection<NoticeDoc>(COLLECTIONS.notices);
+  return notices.countDocuments(publishedQuery(kind));
+}
+
+/**
+ * One page of the published list. Newest first, and the offset is pushed down to
+ * the database rather than taken out of a whole year of notices in memory — a
+ * branch that has put out two hundred notices should not have to read all two
+ * hundred to show the twenty on the screen.
+ */
+export async function listPublishedNoticesWithin(
+  kind: NoticeKind | undefined,
+  skip: number,
+  limit: number,
+): Promise<PublicNotice[]> {
+  const notices = await collection<NoticeDoc>(COLLECTIONS.notices);
+  const docs = await notices
+    .find(publishedQuery(kind))
+    .sort({ publishedAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .toArray();
+  return docs.map(toPublicNotice);
+}
+
 export async function getPublishedNoticeBySlug(slug: string): Promise<PublicNotice | null> {
   const notices = await collection<NoticeDoc>(COLLECTIONS.notices);
   const doc = await notices.findOne({ status: "published", slug });

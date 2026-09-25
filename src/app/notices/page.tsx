@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { NoticeCard } from "@/components/site/NoticeCard";
+import { PageNav } from "@/components/site/PageNav";
 import { EmptyState, PageHeader, SectionUnavailable } from "@/components/site/EmptyState";
-import { getNotices, KIND_LABEL, type NoticeKind } from "@/lib/content";
+import { getNoticesPage, KIND_LABEL, type NoticeKind } from "@/lib/content";
+import { parsePageParam } from "@/lib/pagination";
 
 export const metadata: Metadata = {
   title: "Notices",
@@ -12,14 +14,28 @@ export const metadata: Metadata = {
 
 const KINDS: readonly NoticeKind[] = ["notice", "announcement", "press_release"];
 
+/** A board read on a phone: enough to scroll through, not a year in one screen. */
+const PER_PAGE = 20;
+
 export default async function NoticesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ kind?: string }>;
+  searchParams: Promise<{ kind?: string; page?: string | string[] }>;
 }) {
-  const { kind } = await searchParams;
+  const params = await searchParams;
+  const { kind } = params;
   const active = KINDS.includes(kind as NoticeKind) ? (kind as NoticeKind) : undefined;
-  const read = await getNotices(active);
+  const read = await getNoticesPage(active, parsePageParam(params), PER_PAGE);
+
+  // A filter is a different question, so it starts the answer from the top; the
+  // page number only travels within the filter it was asked for.
+  const hrefFor = (item: NoticeKind | undefined, page: number) => {
+    const query = new URLSearchParams();
+    if (item) query.set("kind", item);
+    if (page > 1) query.set("page", String(page));
+    const text = query.toString();
+    return text ? `/notices?${text}` : "/notices";
+  };
 
   return (
     <div className="container-page space-y-6 py-10">
@@ -41,7 +57,7 @@ export default async function NoticesPage({
         {KINDS.map((item) => (
           <Link
             key={item}
-            href={`/notices?kind=${item}`}
+            href={hrefFor(item, 1)}
             className={`rounded-[4px] border px-3 py-1.5 ${
               active === item
                 ? "border-green-700 bg-green-100 text-green-900"
@@ -54,13 +70,20 @@ export default async function NoticesPage({
       </nav>
 
       {read.state === "ready" ? (
-        <ul className="grid gap-4 sm:grid-cols-2">
-          {read.items.map((notice) => (
-            <li key={notice.slug}>
-              <NoticeCard notice={notice} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="grid gap-4 sm:grid-cols-2">
+            {read.items.map((notice) => (
+              <li key={notice.slug}>
+                <NoticeCard notice={notice} />
+              </li>
+            ))}
+          </ul>
+          <PageNav
+            info={read.info}
+            label="Notice pages"
+            hrefFor={(page) => hrefFor(active, page)}
+          />
+        </>
       ) : read.state === "empty" ? (
         <EmptyState
           title="Nothing published under this filter yet"
