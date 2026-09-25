@@ -39,3 +39,19 @@ export function invalidateGallery(): void {
   revalidatePath("/gallery");
   revalidatePath("/");
 }
+
+/**
+ * A voucher changes the year's totals, the category breakdown, the ledger page
+ * and the front-page summary, so all of them clear together. `/works` is here
+ * because a work's spent figure is summed from these same entries, and a page
+ * still showing the old total after a correction is the failure this whole
+ * module exists to prevent.
+ */
+export function invalidateFinance(): void {
+  revalidatePath("/finance");
+  revalidatePath("/finance/[year]", "page");
+  revalidatePath("/donate");
+  revalidatePath("/works");
+  revalidatePath("/works/[slug]", "page");
+  revalidatePath("/");
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canAccess, isSameOrigin } from "@/lib/auth/require-role";
+import { MANAGE_FINANCE, REOPEN_FINANCIAL_YEAR } from "@/lib/finance";
 
 describe("canAccess", () => {
   it("grants super_admin every allowlist without naming them", () => {
@@ -15,6 +16,28 @@ describe("canAccess", () => {
   it("refuses an unlisted role", () => {
     expect(canAccess("editor", ["treasurer"])).toBe(false);
     expect(canAccess("treasurer", ["editor"])).toBe(false);
+  });
+});
+
+/**
+ * §8: closing a year is the safe direction, so the Treasurer may do it;
+ * reopening one is not, so nobody but a super-admin may, and the reason for it
+ * is kept. Two allowlists, one file, so a screen cannot offer the wrong button.
+ */
+describe("the finance allowlists", () => {
+  it("let the treasurer keep and close the books", () => {
+    expect(canAccess("treasurer", MANAGE_FINANCE)).toBe(true);
+    expect(canAccess("super_admin", MANAGE_FINANCE)).toBe(true);
+  });
+
+  it("keep an editor out of the ledger entirely", () => {
+    expect(canAccess("editor", MANAGE_FINANCE)).toBe(false);
+  });
+
+  it("let only a super-admin reopen a closed year", () => {
+    expect(canAccess("treasurer", REOPEN_FINANCIAL_YEAR)).toBe(false);
+    expect(canAccess("editor", REOPEN_FINANCIAL_YEAR)).toBe(false);
+    expect(canAccess("super_admin", REOPEN_FINANCIAL_YEAR)).toBe(true);
   });
 });
 
