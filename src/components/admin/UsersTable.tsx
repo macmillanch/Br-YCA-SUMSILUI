@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ROLE_LABEL, type PublicUser, type Role } from "@/lib/types";
 
@@ -16,23 +16,48 @@ export function UsersTable({
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The account as its own write came back, against the row it was answered to.
+  const [applied, setApplied] = useState<{
+    id: string;
+    user: PublicUser;
+    on: PublicUser;
+  } | null>(null);
 
-  async function patch(id: string, body: { active?: boolean; role?: Role }) {
-    setBusyId(id);
+  const rows = useMemo(() => {
+    if (!applied) return users;
+    // Once the server has sent this row again, what it says is newer than the
+    // click was, and the patch has nothing left to cover.
+    const current = users.find((user) => user.id === applied.id);
+    if (!current || current !== applied.on) return users;
+    return users.map((user) =>
+      user.id === applied.id ? { ...user, ...applied.user } : user,
+    );
+  }, [users, applied]);
+
+  async function patch(row: PublicUser, body: { active?: boolean; role?: Role }) {
+    setBusyId(row.id);
     setError(null);
     try {
-      const response = await fetch(`/api/users/${id}`, {
+      const response = await fetch(`/api/users/${row.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
+      const parsed = (await response.json().catch(() => null)) as {
+        data?: { user?: PublicUser };
+        error?: { message?: string };
+      } | null;
       if (!response.ok) {
-        const parsed = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
         setError(parsed?.error?.message ?? "Could not update that account.");
         return;
       }
+      // The answer names the account it changed, so its row can say what it is now
+      // rather than wait for the next render of the screen to get around to it.
+      // An account taken out of use also had its sessions ended server-side, and
+      // the row is where a super-admin learns that it landed.
+      const changed = parsed?.data?.user;
+      const on = users.find((user) => user.id === row.id) ?? row;
+      setApplied(changed && changed.id === row.id ? { id: row.id, user: changed, on } : null);
       router.refresh();
     } catch {
       setError("Network problem. Nothing was changed — please try again.");
@@ -65,7 +90,7 @@ export function UsersTable({
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => {
+            {rows.map((user) => {
               const isSelf = user.id === currentUserId;
               const busy = busyId === user.id;
               return (
@@ -83,7 +108,7 @@ export function UsersTable({
                       id={`role-${user.id}`}
                       value={user.role}
                       disabled={isSelf || busy}
-                      onChange={(event) => patch(user.id, { role: event.target.value as Role })}
+                      onChange={(event) => patch(user, { role: event.target.value as Role })}
                       className="rounded-[4px] border border-line bg-paper px-2 py-1 text-sm disabled:opacity-40"
                     >
                       {ROLE_OPTIONS.map((role) => (
@@ -107,7 +132,7 @@ export function UsersTable({
                     <button
                       type="button"
                       disabled={isSelf || busy}
-                      onClick={() => patch(user.id, { active: !user.active })}
+                      onClick={() => patch(user, { active: !user.active })}
                       title={
                         isSelf ? "You cannot change your own account" : "Takes effect immediately"
                       }

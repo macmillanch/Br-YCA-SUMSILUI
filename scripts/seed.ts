@@ -30,6 +30,8 @@ async function main() {
 
   // Only ever create it: re-seeding after an index change must not wipe the
   // contact and bank details an office-bearer has since typed in.
+  // No financial year is opened here either: an opening balance is the branch's
+  // own audited figure, and one a script typed would be published as its money.
   if (await hasSettingsDocument()) {
     console.log("  settings document already exists — left untouched");
   } else {

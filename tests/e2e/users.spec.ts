@@ -87,8 +87,33 @@ test("deactivating an account ends its session at once", async ({ page, browser 
 
   await page.goto("/admin/users");
   const row = page.getByRole("row", { name: new RegExp(`Leaver ${RUN}`) });
-  await row.getByRole("button", { name: /deactivate/i }).click();
-  await expect(row.getByText("Deactivated")).toBeVisible();
+  // `exact` because "Deactivated" contains the word "Active", and the row has to
+  // be read for which of the two it says.
+  await expect(row.getByText("Active", { exact: true })).toBeVisible();
+
+  // The row has to say what the click did rather than wait for the screen to be
+  // rendered again — so every render of this page is held while it is deactivated,
+  // and the word below can only have come from the answer to the click.
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(/\/admin\/users\?.*_rsc/, async (route) => {
+    await held;
+    await route.continue().catch(() => undefined);
+  });
+  try {
+    const deactivating = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().includes("/api/users/"),
+    );
+    await row.getByRole("button", { name: /deactivate/i }).click();
+    await deactivating;
+    await expect(row.getByText("Deactivated", { exact: true })).toBeVisible();
+  } finally {
+    release();
+    await page.unroute(/\/admin\/users\?.*_rsc/);
+  }
 
   expect((await leaverContext.request.get("/api/auth/me")).status()).toBe(401);
 

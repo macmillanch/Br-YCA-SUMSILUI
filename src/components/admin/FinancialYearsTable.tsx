@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { shortDate } from "@/lib/dates";
 import { formatPaise } from "@/lib/money";
-import type { AdminYearRow } from "@/lib/finance";
+// Types only, as everywhere else in `src/components/admin`: `@/lib/finance` is
+// the ledger's own module and pulls in the database driver, which has no business
+// in what the browser downloads.
+import type { AdminFinancialYear, AdminYearRow } from "@/lib/finance";
 
 const FIELD_CLASS =
   "w-full rounded-[4px] border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-green-700";
@@ -31,9 +34,27 @@ export function FinancialYearsTable({
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const [reopening, setReopening] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  // The year as its own write came back, against the render it was answered to.
+  const [applied, setApplied] = useState<{
+    id: string;
+    year: AdminFinancialYear;
+    on: AdminYearRow;
+  } | null>(null);
 
-  async function act(id: string, path: string, body?: unknown) {
-    setBusyId(id);
+  const rows = useMemo(() => {
+    if (!applied) return years;
+    // Once the server has sent this row again, what it says is newer than the
+    // click was, and the patch has nothing left to cover.
+    const current = years.find((year) => year.id === applied.id);
+    if (!current || current !== applied.on) return years;
+    // The four figures stay as the row has them: a closing moves no voucher, so
+    // the response's silence about money is not a gap to fill. They arrive with
+    // the render below, totalled from the same ledger as ever.
+    return years.map((year) => (year.id === applied.id ? { ...year, ...applied.year } : year));
+  }, [years, applied]);
+
+  async function act(year: AdminYearRow, path: string, body?: unknown) {
+    setBusyId(year.id);
     setError(null);
     try {
       const response = await fetch(path, {
@@ -42,12 +63,13 @@ export function FinancialYearsTable({
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       const json = (await response.json().catch(() => null)) as {
+        data?: { year?: AdminFinancialYear };
         error?: { message?: string; fieldErrors?: Record<string, string> };
       } | null;
 
       if (!response.ok) {
         setError({
-          id,
+          id: year.id,
           message:
             json?.error?.message ??
             Object.values(json?.error?.fieldErrors ?? {})[0] ??
@@ -55,11 +77,20 @@ export function FinancialYearsTable({
         });
         return;
       }
+      // The answer names the year it changed, so the row it changed can say so
+      // now rather than when the next render of the page gets around to it. The
+      // row it was answered to is the one the *server* sent, not the one on the
+      // screen: a second write to the same year — closing it and taking it back
+      // into account before the screen has been rendered again — has to cover the
+      // first, and reading the patched row as a newer render would drop both.
+      const changed = json?.data?.year;
+      const on = years.find((each) => each.id === year.id) ?? year;
+      setApplied(changed && changed.id === year.id ? { id: year.id, year: changed, on } : null);
       setReopening(null);
       setReason("");
       router.refresh();
     } catch {
-      setError({ id, message: "Network problem. Nothing changed — please try again." });
+      setError({ id: year.id, message: "Network problem. Nothing changed — please try again." });
     } finally {
       setBusyId(null);
     }
@@ -73,11 +104,11 @@ export function FinancialYearsTable({
     ) {
       return;
     }
-    void act(year.id, `/api/finance/years/${year.id}/lock`);
+    void act(year, `/api/finance/years/${year.id}/lock`);
   }
 
   function reopen(year: AdminYearRow) {
-    void act(year.id, `/api/finance/years/${year.id}/unlock`, { reason });
+    void act(year, `/api/finance/years/${year.id}/unlock`, { reason });
   }
 
   if (years.length === 0) {
@@ -105,7 +136,7 @@ export function FinancialYearsTable({
           </tr>
         </thead>
         <tbody>
-          {years.map((year) => (
+          {rows.map((year) => (
             <tr key={year.id} className="border-b border-line/60 align-top">
               <td className="py-3 pr-4">
                 <Link

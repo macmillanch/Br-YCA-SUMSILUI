@@ -5,9 +5,11 @@ notices, work progress, photographs and — once the branch keeps its ledger her
 financial records; an admin area for office-bearers.
 
 Live now: notices and press releases, the committee and member register, works
-with dated progress reports, and the photograph gallery. The finance pages are
-standing but publish no figures until the ledger screens arrive, because a number
-nobody entered would be a lie on a page about public money.
+with dated progress reports, the photograph gallery, and the year's accounts —
+the treasurer keeps a ledger of vouchers per financial year, and every figure on
+the public pages is totalled from those lines. Nothing publishes a number nobody
+entered: a page with no year open says so, and a page during an outage says it
+cannot read the figures rather than printing `₹0`.
 
 ## Before you start
 
@@ -37,7 +39,7 @@ office-bearers under **Users**.
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Vitest unit tests — no database needed |
 | `npm run seed` | indexes + settings + first super-admin on the current database |
-| `npm run seed:test` | resets `yca_sumsilui_test` with the three known test users |
+| `npm run seed:test` | resets `yca_sumsilui_test`: the three test users, the current year open, and six clearly TEST-labelled vouchers in it |
 | `npm run seed:committee` | records the committee from `data/committee-2026-2028.json` — adds anyone missing, never rewrites a saved record |
 | `npm run test:e2e` | resets `yca_sumsilui_test` first, then runs the Playwright flows |
 
@@ -88,12 +90,32 @@ browse the database in `.env.local`.
 - The design tokens in `src/app/globals.css` come from the YCA emblem. Red is an
   accent, not a fill.
 
+## Keeping the accounts
+
+A year is opened once (**Admin → Finance**: the label, the opening balance the
+audit left, and the audited report's address if there is one). The treasurer then
+enters vouchers against it — every figure dated inside the year, one head from a
+fixed list, amounts in rupees that become integer paise.
+
+- **Correcting** a line asks for a sentence why, and keeps the figure it replaced
+  where the public ledger can show both.
+- **Closing** a year stops the entries. A closed year cannot be deleted and cannot
+  be written into; only a `super_admin` reopens it, and only with a reason that is
+  then printed beside the year.
+- A **contribution** is entered once on its own screen and writes two records — the
+  income voucher and the donation that names it — so the thank-you list on
+  `/donate` and the accounts cannot drift apart. A donor's name appears publicly
+  only when the box is ticked: silence is not consent. Unchecked, the figure still
+  stands in the ledger as *Contribution (name with the Treasurer)*.
+- **No financial year is opened by `npm run seed`.** Opening one, and the six TEST
+  vouchers that prove the screens, belong to `npm run seed:test` alone.
+
 ## Roles
 
 | Role | Can do |
 | --- | --- |
 | `super_admin` | everything, including other accounts and branch settings |
-| `treasurer` | finance entries, plus what an editor can do |
+| `treasurer` | the year's vouchers and contributions, plus what an editor can do — but not opening, closing or reopening a year |
 | `editor` | notices, members, works and gallery |
 
 Deactivating an account signs it out on its next request — the sessions are

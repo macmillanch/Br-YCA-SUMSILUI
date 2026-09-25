@@ -26,7 +26,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const result = await getNoticeBySlug(slug);
-  if (result.state !== "ready") return { title: "Notice not found" };
+  // A notice that could not be read is not a notice that does not exist, and the
+  // tab is read before the page is: §9's rule holds there too.
+  if (result.state === "missing") return { title: "Notice not found" };
+  if (result.state !== "ready") return { title: "Notice temporarily unavailable" };
   const { notice } = result;
   return {
     title: notice.title,

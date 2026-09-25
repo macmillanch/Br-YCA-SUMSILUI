@@ -16,6 +16,10 @@ export async function removeEveryPicture(page: Page) {
     const left = await remove.count();
     if (left === 0) return;
     await remove.first().click();
-    await expect(remove).toHaveCount(left - 1);
+    // The status line is the proof the delete came back from the server; the list
+    // below it is repainted by a client-side refresh, which is a courtesy rather
+    // than a record. So the count is taken from a fresh read of the page.
+    await expect(page.getByText(/^Removed\./)).toBeVisible();
+    await page.goto("/admin/gallery");
   }
 }

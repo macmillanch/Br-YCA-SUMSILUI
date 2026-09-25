@@ -54,3 +54,21 @@ test("an editor cannot write to the settings endpoint", async ({ page, request }
   });
   expect(response.status()).toBe(403);
 });
+
+test.describe("before the page's own scripts arrive", () => {
+  test.use({ javaScriptEnabled: false });
+
+  // A form with no `method` posts to its own address as a query string. So an
+  // office-bearer who types their details a moment before the scripts attach — or
+  // on a connection that never delivers them — would send the branch password in
+  // the address bar, the browser history, and every log between here and there.
+  test("a plain form submission cannot carry the password in the address", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel(/email/i).fill(ADMIN.email);
+    await page.getByLabel(/password/i).fill(ADMIN.password);
+    await page.getByRole("button", { name: /sign in/i }).click();
+
+    await expect(page).not.toHaveURL(/password/i);
+    await expect(page).not.toHaveURL(/branch-test-password/);
+  });
+});

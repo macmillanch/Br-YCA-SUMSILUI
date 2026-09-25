@@ -43,7 +43,18 @@ export function LoginForm() {
     "focus:border-green-700";
 
   return (
-    <form onSubmit={onSubmit} className="w-full space-y-4" noValidate>
+    // `method` and `action` are the safety net: a form that declares neither posts
+    // to its own address as a query string, so a submission made before these
+    // scripts attach would put the branch password in the address bar, the
+    // history, and every log in between. Once hydrated, `onSubmit` prevents this
+    // native route and the JSON request above handles it instead.
+    <form
+      method="post"
+      action="/api/auth/login"
+      onSubmit={onSubmit}
+      className="w-full space-y-4"
+      noValidate
+    >
       {error ? (
         <p
           role="alert"

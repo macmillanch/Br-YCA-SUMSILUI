@@ -146,7 +146,10 @@ export default async function FinanceYearPage({
     searchParams,
   ]);
   const list = known.state === "ready" ? known.items : [];
-  if (!list.some((option) => option.label === year)) notFound();
+  // Only a list that was actually read can call this year a wrong address. When
+  // the years could not be read at all the page says so below, because a database
+  // that will not answer is not a year that never existed (§9).
+  if (known.state === "ready" && !list.some((option) => option.label === year)) notFound();
 
   const period = fiscalYearFromLabel(year);
 

@@ -52,8 +52,15 @@ async function addMember(page: Page, member: Member): Promise<string> {
   }
 
   await page.getByRole("button", { name: /add to the list/i }).click();
-  await expect(page.getByRole("status")).toContainText("Saved");
+  // A new record has no address of its own until the save lands, and the save
+  // takes the writer to that address — so the move, and the name it prints at
+  // the top of the page it moves to, are the proof. `Saved.` only survives a
+  // save that stays put, which is an edit; the same rule is written down in
+  // works.spec.ts, and asserting the message here raced against the navigation.
   await page.waitForURL(/\/admin\/members\/[0-9a-f]{24}$/);
+  await expect(
+    page.getByRole("heading", { name: member.name, exact: true }),
+  ).toBeVisible();
   return new URL(page.url()).pathname;
 }
 

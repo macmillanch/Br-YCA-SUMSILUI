@@ -26,7 +26,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const result = await getWorkBySlug(slug);
-  if (result.state !== "ready") return { title: "Work not found" };
+  // A work that could not be read is not a work that does not exist, and the tab
+  // is read before the page is: §9's rule holds there too.
+  if (result.state === "missing") return { title: "Work not found" };
+  if (result.state !== "ready") return { title: "Work temporarily unavailable" };
   return { title: result.project.title, description: result.project.description };
 }
 

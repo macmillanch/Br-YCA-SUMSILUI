@@ -36,14 +36,6 @@ export function GalleryList({ items }: { items: AdminGalleryItem[] }) {
     }
   }
 
-  if (items.length === 0) {
-    return (
-      <p className="rounded-[12px] border border-dashed border-line bg-paper-alt p-6 text-sm text-ink-muted">
-        No picture has been published yet. The first one added appears on the gallery page at once.
-      </p>
-    );
-  }
-
   return (
     <div className="space-y-3">
       {error ? (
@@ -55,13 +47,21 @@ export function GalleryList({ items }: { items: AdminGalleryItem[] }) {
         </p>
       ) : null}
 
+      {/* Above the empty state, not inside the list: the last picture removed is
+          the removal that most needs saying, and a page that only says "nothing
+          here" leaves the office-bearer wondering whether their click did anything. */}
       {removedCaption ? (
         <p role="status" className="text-sm text-green-700">
           Removed. &ldquo;{removedCaption}&rdquo; is no longer on the gallery page.
         </p>
       ) : null}
 
-      <ul className="space-y-4">
+      {items.length === 0 ? (
+        <p className="rounded-[12px] border border-dashed border-line bg-paper-alt p-6 text-sm text-ink-muted">
+          No picture is on the gallery page. The first one added appears there at once.
+        </p>
+      ) : (
+        <ul className="space-y-4">
         {items.map((item) => (
           <li
             key={item.id}
@@ -94,8 +94,9 @@ export function GalleryList({ items }: { items: AdminGalleryItem[] }) {
               Remove
             </button>
           </li>
-        ))}
-      </ul>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -445,7 +445,8 @@ export async function adminYearPage(label: string): Promise<AdminYearRead> {
  * resurrected under a guess — the message says who closed it when it can, and
  * says nothing more when it cannot.
  */
-export async function lockedByNameOf(doc: FinancialYearDoc): Promise<string | null> {  if (!doc.lockedById) return null;
+export async function lockedByNameOf(doc: FinancialYearDoc): Promise<string | null> {
+  if (!doc.lockedById) return null;
   const user = await findUserById(doc.lockedById);
   return user?.name ?? null;
 }

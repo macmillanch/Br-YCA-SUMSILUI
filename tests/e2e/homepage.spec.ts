@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { SEEDED, figureValue } from "./finance-fixtures";
 
 const ADMIN = { email: "admin@test.yca.local", password: "branch-test-password" };
 
@@ -11,11 +12,16 @@ async function signInAsAdmin(page: Page) {
 }
 
 /**
- * This is the state the branch ships in: nothing published yet. Every section
- * has to stand on its own emptiness rather than be filled with a stand-in, and
- * no rupee figure may appear until the ledger produces one.
+ * The front page in the state the seed leaves it: every section standing on its
+ * own emptiness rather than filled with a stand-in, and the only money shown on
+ * it the money the ledger actually holds.
+ *
+ * The three figures are the six test vouchers seen from the public side. A page
+ * that printed a figure the book did not add up to would be the one failure the
+ * finance screens exist to prevent, so this is the check that closes the year's
+ * specs from outside the office.
  */
-test("an unpublished branch still shows a whole front page, with no invented figures", async ({
+test("the front page shows each section as it is, and the ledger's own figures", async ({
   page,
 }) => {
   await page.goto("/");
@@ -27,18 +33,17 @@ test("an unpublished branch still shows a whole front page, with no invented fig
   await expect(page.getByRole("heading", { name: "Ongoing works", level: 2 })).toBeVisible();
   await expect(main).toContainText("No work is under way");
 
-  await expect(
-    page.getByRole("heading", { name: "Financial transparency", level: 2 }),
-  ).toBeVisible();
-  await expect(main).toContainText("No financial year has been published yet");
+  const finances = page.locator("section[aria-labelledby='finance-heading']");
+  await expect(page.getByRole("heading", { name: "Financial transparency", level: 2 })).toBeVisible();
+  await expect(figureValue(finances, "Income this year")).toHaveText(SEEDED.income);
+  await expect(figureValue(finances, "Expenses this year")).toHaveText(SEEDED.expense);
+  await expect(figureValue(finances, "Balance on hand")).toHaveText(SEEDED.closing);
 
   await expect(page.getByRole("heading", { name: "From the branch", level: 2 })).toBeVisible();
   await expect(main).toContainText("Photographs from branch events will appear here");
 
   // Nothing on the page is a stand-in any more, so nothing carries the marker.
   await expect(main.getByText(/demo/i)).toHaveCount(0);
-  // A rupee sign anywhere here would be an amount nobody entered.
-  await expect(main).not.toContainText("₹");
 
   await page.goto("/about");
   await expect(page.getByRole("main")).toContainText("established in 1978");

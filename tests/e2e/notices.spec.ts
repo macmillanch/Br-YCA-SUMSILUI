@@ -13,6 +13,9 @@ const SLUG = `monsoon-road-repair-notice-${RUN}`;
 
 const DUP_TITLE = `Duplicate address test ${RUN}`;
 
+const HELD_TITLE = `Publish repaint test ${RUN}`;
+const HELD_SLUG = `publish-repaint-test-${RUN}`;
+
 /**
  * Stands in for a translation the branch would supply — only its being non-empty
  * matters here, since the toggle must offer the languages a notice was written
@@ -57,11 +60,22 @@ test("a notice stays a draft until an editor publishes it", async ({ page }) => 
   await page.getByLabel(/venue/i).fill("Branch office, Sumsilui");
   await addChakma(page);
 
+  // The asking is the application's, not the page's, so hearing the request is the
+  // proof that the click landed on something listening — the form is server-rendered,
+  // and a click a moment before the screen wakes up does nothing at all.
+  const saving = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/api/notices"),
+  );
   await page.getByRole("button", { name: /save as draft/i }).click();
-  await expect(page.getByText(/^Saved /)).toBeVisible();
-  // A new notice has no address of its own until the save lands; the form then
-  // takes the editor to its edit screen.
-  await page.waitForURL("**/admin/notices/*");
+  await saving;
+  // Then the navigation the save itself makes is the proof that it landed: the
+  // editor is on the edit screen of the id the server just made, showing what was
+  // written there. The "Saved" line passed through on the way is gone by the time
+  // the next screen is up, and asserting it would be racing a moment no reader is
+  // meant to see.
+  await page.waitForURL(/\/admin\/notices\/[0-9a-f]{24}$/);
+  await expect(page.getByRole("heading", { name: "Edit notice" })).toBeVisible();
+  await expect(page.getByLabel(/title in english/i)).toHaveValue(TITLE);
 
   await page.goto("/admin/notices");
   const draftRow = page.getByRole("row", { name: new RegExp(TITLE) });
@@ -77,10 +91,15 @@ test("a notice stays a draft until an editor publishes it", async ({ page }) => 
   await expect(page.getByRole("heading", { name: /page not found/i })).toBeVisible();
 
   await page.goto("/admin/notices");
+  const publishing = page.waitForRequest(
+    (request) =>
+      request.method() === "PATCH" && request.url().includes("/api/notices/"),
+  );
   await page
     .getByRole("row", { name: new RegExp(TITLE) })
     .getByRole("button", { name: /^publish$/i })
     .click();
+  await publishing;
   await expect(
     page.getByRole("row", { name: new RegExp(TITLE) }).getByText("Published"),
   ).toBeVisible();
@@ -107,6 +126,77 @@ test("a notice stays a draft until an editor publishes it", async ({ page }) => 
   await expect(page.getByText(CHAKMA_TITLE, { exact: true })).toBeVisible();
   await expect(page.getByText(CHAKMA_BODY)).toBeVisible();
   await expect(page.getByText(/approach road below the church/)).toHaveCount(0);
+});
+
+/**
+ * The row has to say what the click did.
+ *
+ * A render of the list may take a moment, or in a busy moment several, and an
+ * editor looking at "Draft" under a notice they have just published has no way to
+ * tell whether to click again. So the answer to the click carries the notice's new
+ * state, and this test holds every render of the screen away to make sure the row
+ * is reading the one it asked for.
+ */
+test("a published notice says Published at once, even with the screen's next render held back", async ({ page }) => {
+  await signIn(page, EDITOR);
+  const created = await page.request.post("/api/notices", {
+    data: {
+      kind: "notice",
+      status: "draft",
+      titleEn: HELD_TITLE,
+      bodyEn: "The row has to say what this click did, not what the last render showed.",
+      slug: HELD_SLUG,
+      eventDate: "",
+      venue: "",
+      titleBn: "",
+      bodyBn: "",
+      titleCdp: "",
+      bodyCdp: "",
+    },
+  });
+  expect(created.status()).toBe(200);
+  const id = (await created.json()).data?.notice?.id as string;
+  expect(id).toBeTruthy();
+
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  try {
+    await page.goto("/admin/notices");
+    const row = page.getByRole("row", { name: new RegExp(HELD_TITLE) });
+    await expect(row.getByText("Draft")).toBeVisible();
+
+    // Every render of this screen is held, including the one the framework may be
+    // making in the background, so nothing below can have come from a page load.
+    await page.route(/\/admin\/notices\?.*_rsc/, async (route) => {
+      await held;
+      await route.continue().catch(() => undefined);
+    });
+
+    const publishing = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().includes("/api/notices/"),
+    );
+    await row.getByRole("button", { name: /^publish$/i }).click();
+    await publishing;
+
+    await expect(row).toContainText("Published");
+    await expect(row.getByText("Draft")).toHaveCount(0);
+
+    await page.unroute(/\/admin\/notices\?.*_rsc/);
+
+    // And the row is not covering anything up: the public list, a fresh page read
+    // straight from the database, says the same.
+    await page.goto("/notices");
+    await expect(page.getByRole("link", { name: HELD_TITLE })).toBeVisible();
+  } finally {
+    // Whatever the row managed to say, the held render has to be let go before the
+    // browser closes or the run sits waiting on it.
+    release();
+    await page.request.delete(`/api/notices/${id}`);
+  }
 });
 
 test("a duplicate web address is refused with a field error", async ({ page }) => {

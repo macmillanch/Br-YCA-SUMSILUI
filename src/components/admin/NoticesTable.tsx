@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
@@ -17,23 +17,46 @@ export function NoticesTable({ notices }: { notices: AdminNotice[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The notice as its own write came back, against the row it was answered to.
+  const [applied, setApplied] = useState<{
+    id: string;
+    notice: AdminNotice;
+    on: AdminNotice;
+  } | null>(null);
 
-  async function send(id: string, body: unknown, failure: string) {
-    setBusyId(id);
+  const rows = useMemo(() => {
+    if (!applied) return notices;
+    const current = notices.find((notice) => notice.id === applied.id);
+    // Once the server has sent this row again, what it says is newer than the
+    // click was, and the patch has nothing left to cover.
+    if (!current || current !== applied.on) return notices;
+    return notices.map((notice) =>
+      notice.id === applied.id ? { ...notice, ...applied.notice } : notice,
+    );
+  }, [notices, applied]);
+
+  async function send(notice: AdminNotice, body: unknown, failure: string) {
+    setBusyId(notice.id);
     setError(null);
     try {
-      const response = await fetch(`/api/notices/${id}`, {
+      const response = await fetch(`/api/notices/${notice.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
+      const parsed = (await response.json().catch(() => null)) as {
+        data?: { notice?: AdminNotice };
+        error?: { message?: string };
+      } | null;
       if (!response.ok) {
-        const parsed = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
         setError(parsed?.error?.message ?? failure);
         return;
       }
+      // The answer names the notice it changed, so its row can say what it is now
+      // rather than wait for the next render of the screen to get around to it.
+      const changed = parsed?.data?.notice;
+      const row = notices.find((each) => each.id === notice.id) ?? notice;
+      setApplied(changed && changed.id === notice.id ? { id: notice.id, notice: changed, on: row } : null);
       router.refresh();
     } catch {
       setError("Network problem. Nothing was changed — please try again.");
@@ -94,7 +117,7 @@ export function NoticesTable({ notices }: { notices: AdminNotice[] }) {
             </tr>
           </thead>
           <tbody>
-            {notices.map((notice) => {
+            {rows.map((notice) => {
               const busy = busyId === notice.id;
               return (
                 <tr key={notice.id} className="border-b border-line/60 align-middle">
@@ -128,7 +151,7 @@ export function NoticesTable({ notices }: { notices: AdminNotice[] }) {
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => send(notice.id, { action: "unpublish" }, "Could not withdraw that notice.")}
+                          onClick={() => send(notice, { action: "unpublish" }, "Could not withdraw that notice.")}
                           className="rounded-[4px] border border-line px-2 py-1 text-green-900 hover:bg-green-100 disabled:opacity-40"
                         >
                           Withdraw
@@ -137,7 +160,7 @@ export function NoticesTable({ notices }: { notices: AdminNotice[] }) {
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => send(notice.id, { action: "publish" }, "Could not publish that notice.")}
+                          onClick={() => send(notice, { action: "publish" }, "Could not publish that notice.")}
                           className="rounded-[4px] bg-red-700 px-2 py-1 text-white hover:bg-red-700/90 disabled:opacity-40"
                         >
                           Publish

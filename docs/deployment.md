@@ -139,8 +139,53 @@ seed.
 - [ ] **No placeholder financial figures remain anywhere.** A made-up rupee
       amount published as the branch's accounts is a trust problem no redesign
       fixes. Finance data goes in only when the treasurer has verified it.
+- [ ] The production ledger holds no `TEST-` voucher numbers. Those six lines are
+      written only by `npm run seed:test`, only into `yca_sumsilui_test`, and only
+      beside a year that script opens. If one appears on Atlas, a seed was run
+      with the wrong `MONGODB_DB` — delete the lines and check the environment.
+- [ ] The current year has been opened on Atlas with the opening balance the last
+      audit closed on (§6), and the treasurer's own account has the `treasurer`
+      role — not a shared super-admin.
 - [ ] `/login` refuses five wrong passwords in fifteen minutes — try it once on
       production to confirm the `loginAttempts` collection is being written.
 - [ ] The custom domain is attached, and every page still works over HTTPS.
       The session cookie is marked `Secure`, so an HTTP origin cannot set it and
       login appears to succeed but never sticks.
+
+---
+
+## 6. Keeping the year's accounts
+
+None of this is a deploy step — it is what the branch does afterwards, and it is
+written down here because the order matters once real money is in the database.
+
+1. **Open the year** (**Admin → Finance**): the label (`2026-27`), the opening
+   balance — which is what the last audited year closed with, not a figure typed
+   from memory — and the address of the audited report if one exists. The report
+   can be attached later, after the year closes; the year list has a box for it.
+   Opening a year is the super-admin's or treasurer's call, and the app never
+   opens one by itself: `npm run seed` deliberately does not.
+2. **Enter the vouchers.** Each is a date inside the year, one head from the fixed
+   list, a rupee amount, the voucher number on the paper, who the money came from
+   or went to, and what it was for. A date outside every opened year is refused on
+   the spot, which is why a contribution received in March belongs to the year it
+   fell in rather than to whichever week it is typed.
+3. **Record contributions on their own screen.** One entry writes the income
+   voucher and the thank-you together, so `/donate` and the ledger can be checked
+   against each other. The donor's name is published only if the box is ticked;
+   unchecked, the figure still stands in the accounts as *Contribution (name with
+   the Treasurer)*. Withdrawing a name later is a correction, not a deletion, so
+   the money a member has already read stays where it was.
+4. **Correct, don't delete.** A wrong line is edited with a sentence why. The old
+   figure stays beside the new one in the year's audit trail, which is what an
+   auditor reads when they ask how a number moved. Removing a line is for a line
+   that should not have existed at all — it leaves no trace but the removal.
+5. **Close the year when the audit is done.** A closed year takes no entries, and
+   neither its vouchers nor its contributions can change. Reopening is a
+   super-admin's act and asks for a reason, which is then printed beside the year
+   for anyone who reads the list.
+
+**During an outage the public pages say they cannot read the figures.** They do
+not print `₹0`, and they do not say "nothing has been published" — an unreachable
+database and an empty one are different answers, and only one of them is a claim
+about the branch's money.
