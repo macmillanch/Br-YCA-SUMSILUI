@@ -45,3 +45,37 @@ export function sumPaise(values: readonly number[]): number {
   }
   return total;
 }
+
+/** Digits with at most two decimal places — no signs, no exponents, no `NaN`. */
+const RUPEE_FIGURE = /^\d+(?:\.\d{1,2})?$/;
+
+/**
+ * The figure a treasurer writes on a voucher into whole paise, or `null` when
+ * it is not a figure at all. A comma is kept out of the pattern rather than the
+ * parse, so `1,005` and `1005` mean the same amount and `1e5` means nothing —
+ * a shorthand nobody books an entry with.
+ */
+export function rupeesInputToPaise(value: string): number | null {
+  const typed = value.trim().replace(/,/g, "");
+  if (!RUPEE_FIGURE.test(typed)) return null;
+  const [rupees, paise = ""] = typed.split(".");
+  const total = Number(rupees) * PAISE_PER_RUPEE + Number(paise.padEnd(2, "0"));
+  return Number.isSafeInteger(total) ? total : null;
+}
+
+/**
+ * The inverse, for a form that shows a saved amount again. Zero stays blank:
+ * an empty field is "nothing recorded", while a printed `0` is a claim that
+ * somebody checked and found nothing.
+ */
+export function paiseToRupeesInput(paise: number): string {
+  assertInteger(paise);
+  if (paise === 0) return "";
+  const sign = paise < 0 ? "-" : "";
+  const absolute = Math.abs(paise);
+  const rupees = Math.floor(absolute / PAISE_PER_RUPEE);
+  const fraction = absolute % PAISE_PER_RUPEE;
+  return fraction === 0
+    ? `${sign}${rupees}`
+    : `${sign}${rupees}.${String(fraction).padStart(2, "0")}`;
+}

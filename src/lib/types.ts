@@ -217,3 +217,108 @@ export type GalleryItemDoc = {
   uploadedById: ObjectId | null;
   createdAt: Date;
 };
+
+/* ------------------------------------------------------------------ finance */
+
+export const TRANSACTION_TYPES = ["income", "expense"] as const;
+export type TransactionType = (typeof TRANSACTION_TYPES)[number];
+
+/**
+ * A fixed list, defined beside its labels in `finance-categories.ts`. Both
+ * directions are declared here as one union because a transaction stores one
+ * `category` whose valid values depend on its `type` — the schema checks the
+ * pair, and a chart only stays comparable if nobody invents a head mid-year.
+ */
+export type TransactionCategory =
+  | "subscription"
+  | "donation"
+  | "event_collection"
+  | "grant"
+  | "interest"
+  | "other_income"
+  | "event"
+  | "community_welfare"
+  | "education"
+  | "youth"
+  | "administration"
+  | "maintenance"
+  | "relief"
+  | "other_expense";
+
+export type FinancialYearDoc = {
+  _id: ObjectId;
+  /** `2026-27`. Unique, and the only form a year's name takes. */
+  label: string;
+  /** Always 1 April of `label`'s first year, and 31 March of its second. */
+  startDate: string;
+  endDate: string;
+  /** The audited figure the year begins with, entered by the Treasurer. */
+  openingBalancePaise: number;
+  /**
+   * Closing a year is the safe direction, so a Treasurer may do it; reopening
+   * is not, so only a super-admin may, and the reason is kept (§8).
+   */
+  locked: boolean;
+  lockedAt?: Date;
+  lockedById?: ObjectId | null;
+  unlockReason?: string;
+  auditPdfUrl?: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/**
+ * One edit, recorded rather than overwritten. An NGO ledger that can be
+ * silently amended is not a transparent ledger (§6), so `reason` is required by
+ * the schema and the trail is shown to the office-bearers. The public page
+ * shows the current figures; this is the record behind them.
+ */
+export type TransactionRevision = {
+  at: Date;
+  byId: ObjectId | null;
+  /** Already rendered for reading: amounts as rupees, categories as labels. */
+  changes: { field: string; from: string; to: string }[];
+  reason: string;
+};
+
+export type TransactionDoc = {
+  _id: ObjectId;
+  /** Derived from `date` on the server. Never taken from the browser. */
+  yearId: ObjectId;
+  date: string;
+  type: TransactionType;
+  category: TransactionCategory;
+  description: string;
+  /**
+   * Always positive. The direction comes from `type`, so an expense of `-5000`
+   * cannot quietly add to the balance it was meant to reduce.
+   */
+  amountPaise: number;
+  voucherNo: string;
+  /** `receivedFrom` on an income line, `paidTo` on an expense one. */
+  party: string;
+  projectId?: ObjectId;
+  entryById: ObjectId | null;
+  createdAt: Date;
+  updatedAt: Date;
+  revisions: TransactionRevision[];
+};
+
+export type DonationDoc = {
+  _id: ObjectId;
+  donorName: string;
+  amountPaise: number;
+  date: string;
+  purpose: string;
+  /** Off unless the donor agrees: a name on this list is a published name. */
+  acknowledgePublicly: boolean;
+  /**
+   * The voucher this created. Unique in both directions, and the reason the
+   * donation form is the only way to change the ledger line — the acknowledgement
+   * list and the accounts cannot then drift apart (§6).
+   */
+  transactionId: ObjectId;
+  recordedById: ObjectId | null;
+  createdAt: Date;
+  updatedAt: Date;
+};

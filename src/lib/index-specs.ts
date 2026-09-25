@@ -48,7 +48,13 @@ export const INDEX_SPECS: Record<CollectionName, IndexSpec[]> = {
     { key: { projectId: 1 } },
     { key: { voucherNo: 1 } },
   ],
-  donations: [{ key: { date: -1 } }, { key: { acknowledgePublicly: 1, date: -1 } }],
+  donations: [
+    { key: { date: -1 } },
+    { key: { acknowledgePublicly: 1, date: -1 } },
+    // One voucher to one donation, both ways: the acknowledgement list and the
+    // accounts are the same entry seen twice.
+    { key: { transactionId: 1 }, unique: true },
+  ],
   projects: [{ key: { slug: 1 }, unique: true }, { key: { status: 1, order: 1 } }],
   projectUpdates: [{ key: { projectId: 1, date: -1 } }],
   galleryItems: [{ key: { album: 1, order: 1 } }, { key: { eventId: 1 } }],

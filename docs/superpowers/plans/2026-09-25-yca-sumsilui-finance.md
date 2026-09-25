@@ -131,9 +131,9 @@ Inherited from Plans 1 and 2 and unchanged:
       `financialYears.label:unique`, `transactions.yearId+date`,
       `transactions.yearId+type+category`, `transactions.projectId`,
       `donations.date`; add the missing `donations.transactionId:unique` spec —
-      one transaction per donation is the rule the screens depend on — and
-      register a partial unique index. (`IndexSpec` gains
-      `partialFilterExpression?: Document`; `ensureIndexes` passes it through.)
+      one transaction per donation is the rule the screens depend on, and it is
+      always present, so a plain unique index says it. `npm run seed:test`
+      creates it (`ensureIndexes` runs there, and in `npm run seed`).
 - [ ] Step 6: `npm run typecheck && npx vitest run`.
 - [ ] Step 7: commit `feat: add finance types, categories and rupee helpers`.
 

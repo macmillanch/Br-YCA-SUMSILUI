@@ -32,6 +32,13 @@ describe("index specs", () => {
     expect(INDEX_SPECS.financialYears).toContainEqual({ key: { label: 1 }, unique: true });
   });
 
+  it("keeps one voucher to one donation", () => {
+    expect(INDEX_SPECS.donations).toContainEqual({
+      key: { transactionId: 1 },
+      unique: true,
+    });
+  });
+
   it("lets the database sweep expired sessions and lockouts on its own", () => {
     expect(INDEX_SPECS.sessions).toContainEqual({
       key: { expiresAt: 1 },
