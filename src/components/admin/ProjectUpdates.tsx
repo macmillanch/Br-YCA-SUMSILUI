@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { shortDate } from "@/lib/dates";
+import { putReportInPlace } from "@/lib/project-timeline";
 import type { AdminProjectUpdate } from "@/lib/projects";
 
 const FIELD_CLASS =
@@ -25,6 +26,13 @@ export function ProjectUpdates({
   updates: AdminProjectUpdate[];
 }) {
   const router = useRouter();
+  // The panel holds the timeline it has been shown, and adds to it what the
+  // server has just confirmed. Refreshing the page's own data is how it catches
+  // up with everything else — but a report the office-bearer has been told is
+  // saved cannot wait on that second round trip to appear, nor a removed one to
+  // disappear. Whenever the server's copy arrives it wins, so nothing the panel
+  // is holding on to outlives the record it came from.
+  const [rows, setRows] = useState<AdminProjectUpdate[]>(updates);
   const [date, setDate] = useState("");
   const [percent, setPercent] = useState("");
   const [text, setText] = useState("");
@@ -32,6 +40,10 @@ export function ProjectUpdates({
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRows(updates);
+  }, [updates]);
 
   async function add() {
     // A blank box would reach the server as an empty string, which becomes 0 —
@@ -52,6 +64,7 @@ export function ProjectUpdates({
         body: JSON.stringify({ date, percentComplete: percentage, text, photos: [] }),
       });
       const body = (await response.json().catch(() => null)) as {
+        data?: { update?: AdminProjectUpdate };
         error?: { message?: string; fieldErrors?: Record<string, string> };
       } | null;
 
@@ -64,6 +77,8 @@ export function ProjectUpdates({
         return;
       }
 
+      const savedUpdate = body?.data?.update;
+      if (savedUpdate) setRows((prev) => putReportInPlace(prev, savedUpdate));
       setDate("");
       setPercent("");
       setText("");
@@ -86,7 +101,10 @@ export function ProjectUpdates({
     }
     setBusyId(update.id);
     try {
-      await fetch(`/api/projects/${projectId}/updates/${update.id}`, { method: "DELETE" });
+      const response = await fetch(`/api/projects/${projectId}/updates/${update.id}`, {
+        method: "DELETE",
+      });
+      if (response.ok) setRows((prev) => prev.filter((row) => row.id !== update.id));
       router.refresh();
     } finally {
       setBusyId(null);
@@ -164,14 +182,14 @@ export function ProjectUpdates({
         </div>
       </div>
 
-      {updates.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="rounded-[12px] border border-dashed border-line bg-paper-alt p-6 text-sm text-ink-muted">
           Nothing has been reported from the site yet, so the public page says so rather than showing
           an empty bar.
         </p>
       ) : (
         <ul className="space-y-3">
-          {updates.map((update) => (
+          {rows.map((update) => (
             <li
               key={update.id}
               className="rounded-[12px] border border-line bg-paper p-4 text-sm"

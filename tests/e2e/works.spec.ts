@@ -58,6 +58,7 @@ async function addWork(page: Page, work: Work): Promise<string> {
 async function addReport(
   page: Page,
   report: { date: string; percent: number; text: string },
+  within?: number,
 ): Promise<void> {
   await page.getByLabel(/date of the report/i).fill(report.date);
   await page.getByLabel(/percentage complete/i).fill(String(report.percent));
@@ -65,7 +66,9 @@ async function addReport(
   await page.getByRole("button", { name: /add to the timeline/i }).click();
   // The panel's own list is the proof the report landed — a bare "Saved" would
   // also match the message the work form is still showing.
-  await expect(reportRow(page, report.text)).toBeVisible();
+  await expect(reportRow(page, report.text)).toBeVisible(
+    within === undefined ? undefined : { timeout: within },
+  );
 }
 
 function reportRow(page: Page, text: string) {
@@ -180,6 +183,36 @@ test("removing a work takes its progress reports with it", async ({ page }) => {
   // body is what proves the address no longer serves the work.
   await page.goto(`/works/${slug}`);
   await expect(page.getByRole("heading", { name: title, exact: true })).toHaveCount(0);
+});
+
+/**
+ * The panel is the office-bearer's own proof that a report landed, and its list
+ * is repainted by a second request the browser makes after the save. Hold that
+ * request open — it neither answers nor fails, so nothing reloads the page
+ * either — and the answer the save itself brought back still has to be on the
+ * screen: a line the branch has been told is saved cannot depend on the refresh
+ * to appear, nor a line taken back down on one to disappear.
+ */
+test("a saved report, and one taken back down, both show without a repaint", async ({ page }) => {
+  const text = `The diversion was walked end to end ${RUN}`;
+  await signIn(page, EDITOR);
+  await addWork(page, { title: `Stream diversion ${RUN}`, order: 21 });
+
+  // What a refresh asks for is the same address with the `RSC` header on it, so
+  // that is the request to hold — anything else the screen needs still loads.
+  await page.route(/\/admin\/works\//, async (route) => {
+    if (!route.request().headers().rsc) return void route.fallback();
+    // Held open rather than refused, and long enough to outlast the wait below,
+    // so the assertion can only be satisfied by what the save itself returned.
+    await new Promise((held) => setTimeout(held, 8_000));
+    return void route.abort();
+  });
+
+  await addReport(page, { date: "2026-09-12", percent: 35, text }, 3_000);
+
+  page.on("dialog", (dialog) => dialog.accept());
+  await reportRow(page, text).getByRole("button", { name: /remove/i }).click();
+  await expect(reportRow(page, text)).toHaveCount(0, { timeout: 3_000 });
 });
 
 test("a wrong report can be taken off the timeline", async ({ page }) => {
