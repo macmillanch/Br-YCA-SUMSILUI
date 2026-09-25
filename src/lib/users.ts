@@ -30,6 +30,22 @@ export async function findUserById(id: ObjectId): Promise<UserDoc | null> {
   return users.findOne({ _id: id });
 }
 
+/**
+ * The names beside a ledger's audit trail, in one query. A page of fifty
+ * vouchers asking for a user each would be fifty round trips to a free tier
+ * that allows one connection at a time.
+ */
+export async function userNamesByIds(ids: readonly ObjectId[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.map((id) => id.toHexString()))];
+  if (unique.length === 0) return new Map();
+
+  const users = await collection<UserDoc>(COLLECTIONS.users);
+  const docs = await users
+    .find({ _id: { $in: unique.map((id) => new ObjectId(id)) } }, { projection: { name: 1 } })
+    .toArray();
+  return new Map(docs.map((doc) => [doc._id.toHexString(), doc.name]));
+}
+
 export async function listUsers(): Promise<PublicUser[]> {
   const users = await collection<UserDoc>(COLLECTIONS.users);
   const docs = await users.find({}).sort({ createdAt: 1 }).toArray();

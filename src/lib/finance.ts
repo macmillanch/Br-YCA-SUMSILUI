@@ -1,11 +1,25 @@
 import { ObjectId, type Document } from "mongodb";
 import { collection } from "@/lib/db";
 import { COLLECTIONS } from "@/lib/index-specs";
+import { categoryLabel } from "@/lib/finance-categories";
 import { istCalendarDate, longDate } from "@/lib/dates";
-import { fiscalYearFromLabel } from "@/lib/fiscal-year";
-import type { FinancialYearDoc, Role, TransactionDoc } from "@/lib/types";
-import type { FinancialYearInput } from "@/lib/validation/finance";
-import { findUserById } from "@/lib/users";
+import { fiscalYearFromLabel, fiscalYearOf } from "@/lib/fiscal-year";
+import { formatPaise } from "@/lib/money";
+import type {
+  DonationDoc,
+  FinancialYearDoc,
+  Role,
+  TransactionCategory,
+  TransactionDoc,
+  TransactionRevision,
+  TransactionType,
+} from "@/lib/types";
+import type {
+  FinancialYearInput,
+  TransactionEditInput,
+  TransactionInput,
+} from "@/lib/validation/finance";
+import { findUserById, userNamesByIds } from "@/lib/users";
 
 /**
  * The branch's books: the years it keeps accounts for, and the vouchers entered
@@ -275,9 +289,399 @@ export async function lockedByNameOf(doc: FinancialYearDoc): Promise<string | nu
   return user?.name ?? null;
 }
 
+/**
+ * The sentence every route gives back when a year is closed (§9). The name is
+ * looked up here rather than passed in, so no handler has to remember that an
+ * answer blaming "the office-bearer who closed it" is only acceptable when the
+ * account is genuinely gone.
+ */
+export async function lockedYearMessage(year: FinancialYearDoc): Promise<string> {
+  return lockMessage(year, await lockedByNameOf(year));
+}
+
 /* ---------------------------------------------------------- transactions */
 
+/** A voucher is looked for by its day, oldest first — the way a cash book reads. */
+const LEDGER_LIMIT = 5000;
+
+export type WriteGuard = "locked" | "linked_donation";
+
+/**
+ * What a write to the ledger answered, and what it answers with.
+ *
+ * `no_year_for_date` carries the label the date would fall in, because the
+ * treasurer's next move is to open that year and the screen has to name it.
+ * `locked` carries the year, so the 409 can say who closed it and when.
+ */
+export type TransactionWrite =
+  | { result: "written"; transaction: TransactionDoc }
+  | { result: "no_year_for_date"; date: string; fiscalLabel: string }
+  | { result: "locked"; year: FinancialYearDoc }
+  | { result: "not_found" }
+  | { result: "linked_donation" };
+
+export type TransactionFilter = {
+  yearId?: ObjectId | null;
+  type?: TransactionType;
+  category?: TransactionCategory;
+  projectId?: ObjectId | null;
+  search?: string;
+  limit?: number;
+};
+
+/**
+ * The two rules that can refuse a write, in the order a treasurer can act on.
+ *
+ * A closed year is named first: reopening it is somebody else's decision, so the
+ * only helpful next step is to ask. A voucher a donation owns is the treasurer's
+ * own business — they can go and change it on the donation screen — and saying
+ * both at once would bury the one they can use.
+ */
+export function guardWriteFor(
+  year: FinancialYearDoc,
+  donationOwner: DonationDoc | null,
+): WriteGuard | null {
+  if (yearIsClosed(year)) return "locked";
+  if (donationOwner) return "linked_donation";
+  return null;
+}
+
+/**
+ * The day a voucher was given, measured against the year it is being kept in.
+ * The window is closed at both ends, so 31 March is inside and 1 April is not —
+ * which is the boundary §10 names, and the reason a voucher's year is worked out
+ * from its date rather than chosen.
+ */
+export function transactionDateOutOfYear(date: string, year: YearWindow): boolean {
+  return date < year.startDate || date > year.endDate;
+}
+
+/**
+ * The document a voucher becomes. The year it is filed under and who entered it
+ * are both handed in by the server: the browser's opinion of either is not used.
+ *
+ * `entryById` is kept from an existing document on an edit — the trail of who
+ * first wrote a line must not quietly become the name of whoever corrected it.
+ */
+export function buildTransactionDoc(
+  input: TransactionInput,
+  yearId: ObjectId,
+  entryById: ObjectId | null,
+  existing?: TransactionDoc,
+): TransactionDoc {
+  const now = new Date();
+  return compact<TransactionDoc>({
+    _id: existing?._id ?? new ObjectId(),
+    yearId,
+    date: input.date,
+    type: input.type,
+    category: input.category,
+    description: input.description,
+    amountPaise: input.amountPaise,
+    voucherNo: input.voucherNo,
+    party: input.party,
+    projectId: input.projectId === "" ? undefined : new ObjectId(input.projectId),
+    entryById: existing ? existing.entryById : entryById,
+    revisions: existing?.revisions ?? [],
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  });
+}
+
+/**
+ * The fields a reader would notice, in the order the book prints them, each with
+ * the words a person would use for its value. `createdAt`, `updatedAt` and
+ * `revisions` are deliberately absent: they move on every edit, and reporting
+ * them would bury the change the treasurer came to make.
+ */
+const TRAIL_FIELDS: readonly {
+  field: string;
+  value: (doc: TransactionDoc, titleOfWork?: (id: string) => string) => string;
+}[] = [
+  { field: "Date", value: (doc) => doc.date },
+  { field: "Direction", value: (doc) => (doc.type === "income" ? "Income" : "Expenditure") },
+  { field: "Head", value: (doc) => categoryLabel(doc.category) },
+  { field: "Voucher number", value: (doc) => doc.voucherNo },
+  { field: "Description", value: (doc) => doc.description },
+  { field: "Party", value: (doc) => doc.party },
+  { field: "Work", value: (doc, titleOfWork) => workLabel(doc, titleOfWork) },
+  { field: "Amount", value: (doc) => formatPaise(doc.amountPaise) },
+];
+
+/**
+ * A work is named by its title when the caller knows one, and by the beginning
+ * of its id when it does not. Half an id in an audit trail is honest; a guessed
+ * name is not.
+ */
+function workLabel(doc: TransactionDoc, titleOfWork?: (id: string) => string): string {
+  if (!doc.projectId) return "No work";
+  const hex = doc.projectId.toHexString();
+  return titleOfWork?.(hex) ?? `Work ${hex.slice(0, 6)}`;
+}
+
+/**
+ * What changed between two versions of the same voucher, as the words a member
+ * would read under the line. An empty array means the edit moved nothing, and
+ * the caller keeps the trail clean rather than writing a blank entry.
+ */
+export function describeChanges(
+  before: TransactionDoc,
+  after: TransactionDoc,
+  titleOfWork?: (id: string) => string,
+): TransactionRevision["changes"] {
+  const changes: TransactionRevision["changes"] = [];
+  for (const entry of TRAIL_FIELDS) {
+    const from = entry.value(before, titleOfWork);
+    const to = entry.value(after, titleOfWork);
+    if (from !== to) changes.push({ field: entry.field, from, to });
+  }
+  return changes;
+}
+
+async function transactionsCollection() {
+  return collection<TransactionDoc>(COLLECTIONS.transactions);
+}
+
 export async function countTransactionsForYear(yearId: ObjectId): Promise<number> {
-  const transactions = await collection<TransactionDoc>(COLLECTIONS.transactions);
+  const transactions = await transactionsCollection();
   return transactions.countDocuments({ yearId });
+}
+
+export async function getTransaction(id: ObjectId): Promise<TransactionDoc | null> {
+  const transactions = await transactionsCollection();
+  return transactions.findOne({ _id: id });
+}
+
+/** Only the characters a `find` needs; a treasurer's search text stays plain text. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export async function listTransactions(filter: TransactionFilter): Promise<TransactionDoc[]> {
+  const query: Document = {};
+  if (filter.yearId) query.yearId = filter.yearId;
+  if (filter.type) query.type = filter.type;
+  if (filter.category) query.category = filter.category;
+  if (filter.projectId) query.projectId = filter.projectId;
+
+  const search = filter.search?.trim();
+  if (search) {
+    // Found by number, by party, or by what the money was for — the three ways
+    // anybody looks for a voucher a month later.
+    query.$or = ["voucherNo", "party", "description"].map((field) => ({
+      [field]: { $regex: escapeRegExp(search), $options: "i" },
+    }));
+  }
+
+  const transactions = await transactionsCollection();
+  return transactions
+    .find(query)
+    .sort({ date: 1, _id: 1 })
+    .limit(filter.limit ?? LEDGER_LIMIT)
+    .toArray();
+}
+
+/**
+ * The donation that owns a voucher, if one does. This is the lookup behind the
+ * rule that a donation's ledger line is not edited from the finance screens: the
+ * acknowledgement list and the accounts are the same entry seen twice, and two
+ * forms writing halves of it is how they drift.
+ */
+export async function donationOwningTransaction(transactionId: ObjectId): Promise<DonationDoc | null> {
+  const donations = await collection<DonationDoc>(COLLECTIONS.donations);
+  return donations.findOne({ transactionId });
+}
+
+export type DonationLinkedWrite = { allowDonationLinked?: boolean };
+
+/**
+ * An insert can be refused for two reasons only — no year covers the day, or the
+ * year it does cover is closed. Nothing is being replaced, so there is no voucher
+ * to fail to find and no donation standing in the way.
+ */
+export type TransactionInsert = Extract<
+  TransactionWrite,
+  { result: "written" | "no_year_for_date" | "locked" }
+>;
+
+/**
+ * Entering a voucher. The year is looked up from the date here and nowhere else,
+ * so a request body that names a different year changes nothing about where the
+ * entry lands — and a date the branch keeps no accounts for is refused before
+ * anything is written.
+ */
+export async function insertTransaction(
+  input: TransactionInput,
+  byId: ObjectId,
+): Promise<TransactionInsert> {
+  const year = await financialYearForDate(input.date);
+  if (!year) {
+    return {
+      result: "no_year_for_date",
+      date: input.date,
+      fiscalLabel: fiscalYearOf(input.date).label,
+    };
+  }
+
+  const guard = guardWriteFor(year, null);
+  if (guard === "locked") return { result: "locked", year };
+
+  const doc = buildTransactionDoc(input, year._id, byId);
+  const transactions = await transactionsCollection();
+  await transactions.insertOne(doc);
+  return { result: "written", transaction: doc };
+}
+
+/**
+ * Changing a voucher, and writing the trail that says it was changed.
+ *
+ * Two years have to be open for this to happen: the one the entry sits in, and
+ * the one its date now puts it in. Moving a line out of a closed year would
+ * alter figures the public has already read, which is the one thing the lock is
+ * for. `allowDonationLinked` is set only by the donation screen, which is the
+ * one place a donation's voucher may be edited (§6).
+ */
+export async function replaceTransaction(
+  id: ObjectId,
+  input: TransactionEditInput,
+  byId: ObjectId,
+  options: DonationLinkedWrite = {},
+): Promise<TransactionWrite> {
+  const transactions = await transactionsCollection();
+  const before = await transactions.findOne({ _id: id });
+  if (!before) return { result: "not_found" };
+
+  const target = await financialYearForDate(input.date);
+  if (!target) {
+    return {
+      result: "no_year_for_date",
+      date: input.date,
+      fiscalLabel: fiscalYearOf(input.date).label,
+    };
+  }
+
+  const leaving = transactionDateOutOfYear(before.date, target)
+    ? await getFinancialYear(before.yearId)
+    : null;
+
+  // A voucher may not be taken out of a closed year either: the totals the
+  // public has read would lose the entry underneath them.
+  if (leaving && yearIsClosed(leaving)) return { result: "locked", year: leaving };
+
+  const donation = options.allowDonationLinked ? null : await donationOwningTransaction(id);
+  const guard = guardWriteFor(target, donation);
+  if (guard === "locked") return { result: "locked", year: target };
+  if (guard === "linked_donation") return { result: "linked_donation" };
+
+  const after = buildTransactionDoc(input, target._id, byId, before);
+  const changes = describeChanges(before, after);
+  if (changes.length === 0) return { result: "written", transaction: before };
+
+  const revision: TransactionRevision = {
+    at: new Date(),
+    byId,
+    changes,
+    reason: input.reason,
+  };
+  const saved = await transactions.findOneAndReplace(
+    { _id: id },
+    compact<TransactionDoc>({ ...after, revisions: [...before.revisions, revision] }),
+    { returnDocument: "after" },
+  );
+  if (!saved) return { result: "not_found" };
+  return { result: "written", transaction: saved };
+}
+
+/**
+ * Removing a voucher. A closed year keeps its entries whatever the reason; so
+ * does a donation, which is deleted through the donation screen instead, where
+ * both halves of the record can go together.
+ */
+export async function removeTransaction(
+  id: ObjectId,
+  options: DonationLinkedWrite = {},
+): Promise<TransactionWrite> {
+  const transactions = await transactionsCollection();
+  const doc = await transactions.findOne({ _id: id });
+  if (!doc) return { result: "not_found" };
+
+  const year = await getFinancialYear(doc.yearId);
+  if (year && yearIsClosed(year)) return { result: "locked", year };
+
+  if (!options.allowDonationLinked && (await donationOwningTransaction(id))) {
+    return { result: "linked_donation" };
+  }
+
+  const { deletedCount } = await transactions.deleteOne({ _id: id });
+  if ((deletedCount ?? 0) === 0) return { result: "not_found" };
+  return { result: "written", transaction: doc };
+}
+
+/* ------------------------------------------------------ reads for the office */
+
+export type AdminTransactionRevision = {
+  /** The instant the change was made, as `Date.toISOString()`. */
+  at: string;
+  byName: string | null;
+  changes: TransactionRevision["changes"];
+  reason: string;
+};
+
+export type AdminTransaction = {
+  id: string;
+  yearId: string;
+  date: string;
+  type: TransactionType;
+  category: TransactionCategory;
+  categoryLabel: string;
+  description: string;
+  amountPaise: number;
+  voucherNo: string;
+  party: string;
+  projectId: string | null;
+  enteredByName: string | null;
+  revisions: AdminTransactionRevision[];
+};
+
+/**
+ * A voucher as the treasurer's screen shows it: the figure still in paise, the
+ * head in the words a member would read, and each change with the name of
+ * whoever made it. An account that has since left the site gives a `null` the
+ * page renders as its own sentence, never the word "null".
+ */
+export function toAdminTransaction(
+  doc: TransactionDoc,
+  names: Map<string, string>,
+): AdminTransaction {
+  return {
+    id: doc._id.toHexString(),
+    yearId: doc.yearId.toHexString(),
+    date: doc.date,
+    type: doc.type,
+    category: doc.category,
+    categoryLabel: categoryLabel(doc.category),
+    description: doc.description,
+    amountPaise: doc.amountPaise,
+    voucherNo: doc.voucherNo,
+    party: doc.party,
+    projectId: doc.projectId ? doc.projectId.toHexString() : null,
+    enteredByName: doc.entryById ? names.get(doc.entryById.toHexString()) ?? null : null,
+    revisions: doc.revisions.map((revision) => ({
+      at: revision.at.toISOString(),
+      byName: revision.byId ? names.get(revision.byId.toHexString()) ?? null : null,
+      changes: revision.changes,
+      reason: revision.reason,
+    })),
+  };
+}
+
+/** Every account whose name a page's worth of vouchers needs, looked up once. */
+export async function namesForTransactions(
+  docs: readonly TransactionDoc[],
+): Promise<Map<string, string>> {
+  const ids = docs.flatMap((doc) => [
+    ...(doc.entryById ? [doc.entryById] : []),
+    ...doc.revisions.flatMap((revision) => (revision.byId ? [revision.byId] : [])),
+  ]);
+  return userNamesByIds(ids);
 }
