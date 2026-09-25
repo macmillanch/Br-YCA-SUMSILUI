@@ -90,7 +90,7 @@ export default async function DonatePage() {
 
         {acknowledgements.state === "unavailable" ? (
           <div className="mt-4">
-            <SectionUnavailable what="The list of contributions" />
+            <SectionUnavailable what="The list of contributions" many={false} />
           </div>
         ) : null}
 

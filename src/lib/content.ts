@@ -28,7 +28,15 @@ import {
 } from "@/lib/finance-ledger";
 import { istCalendarDate } from "@/lib/dates";
 import { galleryAlbums, recentGalleryItems, type GalleryAlbum, type PublicGalleryItem } from "@/lib/gallery";
-import { listMembers, toDirectoryRow, toPublicMember } from "@/lib/members";
+import {
+  countMembers,
+  listMembers,
+  listMembersWithin,
+  toDirectoryRow,
+  toPublicMember,
+  type MemberFilter,
+} from "@/lib/members";
+import type { NameSearch } from "@/lib/member-search";
 import {
   countPublishedNotices,
   getPublishedNoticeBySlug,
@@ -449,12 +457,25 @@ export async function getCommittee(): Promise<CommitteePage> {
   return { state: "ready", sections, past };
 }
 
-export async function getMemberDirectory(): Promise<PublicRead<DirectoryRow>> {
+/**
+ * One page of the public register, and any name search the reader asked for.
+ *
+ * The count is read first so that "nobody by that name" and "the branch has not
+ * published its register yet" can be told apart on the page: both are an empty
+ * result, and only one of them is about the branch.
+ */
+export async function getMemberDirectoryPage(
+  search: NameSearch,
+  page: number,
+  size: number,
+): Promise<PublicPageRead<DirectoryRow>> {
+  const filter: MemberFilter = { memberType: "community_member", search };
   try {
-    const docs = await listMembers({ memberType: "community_member" });
-    return docs.length > 0
-      ? { state: "ready", items: docs.map((doc) => toDirectoryRow(doc)) }
-      : { state: "empty" };
+    const total = await countMembers(filter);
+    if (total === 0) return { state: "empty" };
+    const info = pageInfo(page, size, total);
+    const docs = await listMembersWithin(filter, (info.page - 1) * size, size);
+    return { state: "ready", items: docs.map((doc) => toDirectoryRow(doc)), info };
   } catch (error) {
     console.error("the member register is unavailable", error);
     return { state: "unavailable" };

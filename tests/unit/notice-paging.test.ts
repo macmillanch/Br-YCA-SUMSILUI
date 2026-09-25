@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NoticeDoc } from "@/lib/types";
+import type { StubCall, StubStore } from "./stub-store";
 
 /**
  * The paging reads are tested against a stand-in for the driver, because what
@@ -9,59 +10,12 @@ import type { NoticeDoc } from "@/lib/types";
  * correctly while the code still asked for the wrong page.
  */
 
-type Store = { docs: NoticeDoc[]; fail: boolean };
-const store = vi.hoisted((): Store => ({ docs: [], fail: false }));
-
-type Call = {
-  filter: Record<string, unknown>;
-  sort?: Record<string, 1 | -1>;
-  skip?: number;
-  limit?: number;
-};
-const calls = vi.hoisted((): Call[] => []);
-
-function matches(filter: Record<string, unknown>): NoticeDoc[] {
-  return store.docs.filter((doc) =>
-    Object.entries(filter).every(([key, want]) => (doc as Record<string, unknown>)[key] === want),
-  );
-}
+const store = vi.hoisted((): StubStore => ({ docs: [], fail: false }));
+const calls = vi.hoisted((): StubCall[] => []);
 
 vi.mock("@/lib/db", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/db")>()),
-  collection: async () => {
-    if (store.fail) throw new Error("MongoServerSelectionError: connection refused");
-    return {
-      countDocuments: (filter: Record<string, unknown>) => matches(filter).length,
-      find: (filter: Record<string, unknown>) => {
-        const call: Call = { filter: { ...filter } };
-        calls.push(call);
-        let rows = matches(filter);
-        const cursor = {
-          sort(spec: Record<string, 1 | -1>) {
-            call.sort = spec;
-            const key = Object.keys(spec)[0] as keyof NoticeDoc;
-            const direction = spec[key as unknown as string] ?? 1;
-            rows = [...rows].sort(
-              (a, b) => ((a[key] as Date).getTime() - (b[key] as Date).getTime()) * direction,
-            );
-            return cursor;
-          },
-          skip(count: number) {
-            call.skip = count;
-            rows = rows.slice(count);
-            return cursor;
-          },
-          limit(count: number) {
-            call.limit = count;
-            rows = rows.slice(0, count);
-            return cursor;
-          },
-          toArray: async () => rows,
-        };
-        return cursor;
-      },
-    };
-  },
+  ...(await import("./stub-store")).stubDatabase(store, calls),
 }));
 
 const { countPublishedNotices, listPublishedNoticesWithin } = await import("@/lib/notices");

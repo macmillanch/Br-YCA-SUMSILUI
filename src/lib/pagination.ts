@@ -12,8 +12,16 @@ export type PageParams =
   | { [key: string]: string | string[] | undefined }
   | URLSearchParams;
 
-function raw(params: PageParams, key: string): string | string[] | undefined {
-  return params instanceof URLSearchParams ? params.get(key) ?? undefined : params[key];
+/**
+ * The first value a key carries, as text — `""` when the key is absent.
+ *
+ * A query string can name the same key twice, and the address a reader was given
+ * decides which of the two they meant, so the first is taken and the rest ignored.
+ */
+export function paramText(params: PageParams, key: string): string {
+  const value = params instanceof URLSearchParams ? params.get(key) ?? undefined : params[key];
+  const text = Array.isArray(value) ? value[0] : value;
+  return text ?? "";
 }
 
 /**
@@ -24,8 +32,7 @@ function raw(params: PageParams, key: string): string | string[] | undefined {
  * broken address would be a poor way to run a public notice board.
  */
 export function parsePageParam(params: PageParams, key = "page"): number {
-  const value = raw(params, key);
-  const text = (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
+  const text = paramText(params, key).trim();
   if (!/^\d+$/.test(text)) return 1;
   const page = Number(text);
   return Number.isSafeInteger(page) && page >= 1 ? page : 1;

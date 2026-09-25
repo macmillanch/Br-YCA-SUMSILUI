@@ -52,7 +52,7 @@ export default async function NoticeDetailPage({
       <div className="container-page max-w-3xl py-10">
         <h1 className="text-3xl leading-tight">This notice</h1>
         <div className="mt-6">
-          <SectionUnavailable what="This notice" />
+          <SectionUnavailable what="This notice" many={false} />
         </div>
       </div>
     );

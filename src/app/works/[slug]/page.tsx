@@ -43,7 +43,7 @@ export default async function WorkDetailPage({ params }: { params: Promise<{ slu
       <div className="container-page max-w-3xl py-10">
         <h1 className="text-3xl leading-tight">This work</h1>
         <div className="mt-6">
-          <SectionUnavailable what="This work" />
+          <SectionUnavailable what="This work" many={false} />
         </div>
       </div>
     );

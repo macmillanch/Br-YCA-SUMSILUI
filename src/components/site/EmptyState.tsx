@@ -26,14 +26,19 @@ export function EmptyState({
  * Spec §9: when a public read fails, the page keeps its layout and navigation
  * and only the affected section says so. An error page for a photo strip would
  * read as though the branch had closed.
+ *
+ * `what` is the reader's name for the section, and `many` agrees the verb with
+ * it — half the sections are a plural list and half are one thing the branch
+ * keeps, and "this notice are temporarily unavailable" is not something to put
+ * in front of a member who came for one answer.
  */
-export function SectionUnavailable({ what }: { what: string }) {
+export function SectionUnavailable({ what, many = true }: { what: string; many?: boolean }) {
   return (
     <p
       role="status"
       className="rounded-[12px] border border-dashed border-line bg-paper-alt p-6 text-sm text-ink-muted"
     >
-      {what} are temporarily unavailable — please try again.
+      {what} {many ? "are" : "is"} temporarily unavailable — please try again.
     </p>
   );
 }

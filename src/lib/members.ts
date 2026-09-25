@@ -1,6 +1,7 @@
 import { ObjectId, type Filter } from "mongodb";
 import { collection } from "@/lib/db";
 import { COLLECTIONS } from "@/lib/index-specs";
+import { nameClauses, type NameSearch } from "@/lib/member-search";
 import type { DirectoryRow, PublicMember } from "@/lib/content";
 import type { MemberDoc, MemberType, Role } from "@/lib/types";
 import type { MemberInput } from "@/lib/validation/members";
@@ -13,7 +14,23 @@ import type { MemberInput } from "@/lib/validation/members";
  * cannot accidentally publish a number someone typed for the office.
  */
 
-export type MemberFilter = { memberType?: MemberType; current?: boolean };
+export type MemberFilter = { memberType?: MemberType; current?: boolean; search?: NameSearch };
+
+/**
+ * The filter as MongoDB reads it.
+ *
+ * A name search is several requirements on one field, and a document cannot
+ * carry two `name` keys, so the words go in as `$and` clauses. The body and
+ * status filters stay outside, where the register's index can still do the work.
+ */
+function memberQuery(filter: MemberFilter): Filter<MemberDoc> {
+  const query: Filter<MemberDoc> = {};
+  if (filter.memberType) query.memberType = filter.memberType;
+  if (filter.current !== undefined) query.current = filter.current;
+
+  const clauses = filter.search ? nameClauses(filter.search) : [];
+  return clauses.length > 0 ? { $and: [query, ...clauses] } : query;
+}
 
 /**
  * The role matrix lets an editor and a treasurer keep the member list — both
@@ -73,12 +90,34 @@ export async function getMember(id: ObjectId): Promise<MemberDoc | null> {
 }
 
 /** The branch's own order first, then the alphabet for whoever has no number. */
+const REGISTER_ORDER = { order: 1, name: 1 } as const;
+
 export async function listMembers(filter: MemberFilter = {}): Promise<MemberDoc[]> {
   const members = await collection<MemberDoc>(COLLECTIONS.members);
-  const query: Filter<MemberDoc> = {};
-  if (filter.memberType) query.memberType = filter.memberType;
-  if (filter.current !== undefined) query.current = filter.current;
-  return members.find(query).sort({ order: 1, name: 1 }).limit(500).toArray();
+  return members.find(memberQuery(filter)).sort(REGISTER_ORDER).limit(500).toArray();
+}
+
+/**
+ * How many members a filter holds, so a page of twenty can say what "of 312"
+ * means and a search can tell "nobody by that name" from "no register yet".
+ */
+export async function countMembers(filter: MemberFilter = {}): Promise<number> {
+  const members = await collection<MemberDoc>(COLLECTIONS.members);
+  return members.countDocuments(memberQuery(filter));
+}
+
+/**
+ * One page of the register, in the branch's own order. The offset is asked of
+ * the database rather than taken out of every name the branch holds, so a
+ * directory of a thousand members costs the same twenty rows as one of thirty.
+ */
+export async function listMembersWithin(
+  filter: MemberFilter,
+  skip: number,
+  limit: number,
+): Promise<MemberDoc[]> {
+  const members = await collection<MemberDoc>(COLLECTIONS.members);
+  return members.find(memberQuery(filter)).sort(REGISTER_ORDER).skip(skip).limit(limit).toArray();
 }
 
 export async function deleteMember(id: ObjectId): Promise<boolean> {

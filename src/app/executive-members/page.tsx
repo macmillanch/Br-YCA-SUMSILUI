@@ -22,7 +22,7 @@ export default async function ExecutiveMembersPage() {
         description="The office-bearers in post for the current term, listed in the order the branch sets. Where an office-bearer has agreed to be contacted, a phone number and an email address appear on their card."
       />
 
-      {committee.state === "unavailable" ? <SectionUnavailable what="The office-bearer list" /> : null}
+      {committee.state === "unavailable" ? <SectionUnavailable what="The office-bearer list" many={false} /> : null}
 
       {committee.state === "empty" ? (
         <EmptyState
