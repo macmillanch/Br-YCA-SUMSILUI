@@ -1,13 +1,21 @@
 # Br. YCA Sumsilui
 
 Website of the Sumsilui branch of the Young Chakma Association, Mizoram. Public
-notices, work progress and financial records; an admin area for office-bearers.
+notices, work progress, photographs and — once the branch keeps its ledger here —
+financial records; an admin area for office-bearers.
+
+Live now: notices and press releases, the committee and member register, works
+with dated progress reports, and the photograph gallery. The finance pages are
+standing but publish no figures until the ledger screens arrive, because a number
+nobody entered would be a lie on a page about public money.
 
 ## Before you start
 
 - Node 18.18+ (the app targets Node 20 on Vercel)
 - A MongoDB Atlas M0 cluster — `docs/deployment.md` walks through it
-- A Cloudinary account (needed from Plan 2, for photo uploads)
+- A Cloudinary account, for photo uploads. Without its keys the gallery still
+  works — an office-bearer adds a picture by its web address — but an uploaded
+  file is refused with a plain explanation.
 
 ## Local setup
 
@@ -31,7 +39,12 @@ office-bearers under **Users**.
 | `npm run seed` | indexes + settings + first super-admin on the current database |
 | `npm run seed:test` | resets `yca_sumsilui_test` with the three known test users |
 | `npm run seed:committee` | records the committee from `data/committee-2026-2028.json` — adds anyone missing, never rewrites a saved record |
-| `npm run test:e2e` | Playwright flows; run `seed:test` first |
+| `npm run test:e2e` | resets `yca_sumsilui_test` first, then runs the Playwright flows |
+
+The specs share that one test database, so each run starts from an empty branch:
+several of them assert what a page looks like before anything has been published.
+`npx playwright test` alone reuses whatever the last run left and will report
+failures that belong to no feature — use `npm run test:e2e`.
 
 `npm run test:e2e` needs a browser. Playwright downloads its own pinned Chromium
 on first use (`npx playwright install chromium`). If that download is
@@ -68,6 +81,10 @@ browse the database in `.env.local`.
   implicitly, and an empty allowlist means super-admin only.
 - Nothing is invented. A branch detail no one has typed is rendered as "Not
   published yet", never as a plausible-looking placeholder.
+- Empty and unreadable are different answers. A public read reports which one it
+  got, and only the empty one may say "not published yet" — through an outage the
+  section says it is temporarily unavailable, so a database that cannot be
+  reached never reads as a branch that has published nothing.
 - The design tokens in `src/app/globals.css` come from the YCA emblem. Red is an
   accent, not a fill.
 

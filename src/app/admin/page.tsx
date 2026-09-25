@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, resolveSession } from "@/lib/auth/session";
 import { Card } from "@/components/ui/Card";
+import { listGalleryDocs } from "@/lib/gallery";
 import { listPublishedNotices } from "@/lib/notices";
 import { publicProjects } from "@/lib/projects";
 import { getSettings } from "@/lib/settings";
@@ -14,11 +15,12 @@ export default async function DashboardPage() {
   const ctx = await resolveSession(store.get(SESSION_COOKIE)?.value ?? "");
   if (!ctx) return null;
 
-  const [users, settings, notices, works] = await Promise.all([
+  const [users, settings, notices, works, pictures] = await Promise.all([
     listUsers(),
     getSettings(),
     listPublishedNotices(),
     publicProjects("ongoing"),
+    listGalleryDocs(),
   ]);
   const missing = [
     settings.addressLine ? null : "address",
@@ -32,7 +34,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <h1 className="text-2xl">Dashboard</h1>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <p className="text-3xl font-semibold text-green-700">{users.length}</p>
           <p className="text-sm text-ink-muted">Admin accounts</p>
@@ -44,6 +46,10 @@ export default async function DashboardPage() {
         <Card>
           <p className="text-3xl font-semibold text-green-700">{works.length}</p>
           <p className="text-sm text-ink-muted">Works under way</p>
+        </Card>
+        <Card>
+          <p className="text-3xl font-semibold text-green-700">{pictures.length}</p>
+          <p className="text-sm text-ink-muted">Pictures published</p>
         </Card>
         <Card>
           <p className="text-3xl font-semibold text-green-700">{settings.branchName ? "Set" : "Empty"}</p>
@@ -65,11 +71,11 @@ export default async function DashboardPage() {
       <Card>
         <h2 className="text-base">What is ready now</h2>
         <p className="mt-1 text-sm text-ink-muted">
-          Notices, the committee and member register, and works with their dated progress reports
-          are live: what you save here appears on the public pages within five minutes. The
-          photograph gallery opens with the image store, and the year&rsquo;s accounts with the
-          finance screens. Until the ledger exists, the public finance pages say that no year has
-          been published and show no figures of their own.
+          Notices, the committee and member register, works with their dated progress reports and
+          the photograph gallery are live: what you save here appears on the public pages within
+          five minutes. The year&rsquo;s accounts come with the finance screens. A picture uploaded
+          as a file needs the branch&rsquo;s own image store keys in the server environment; until
+          they are in place, an office-bearer can add a picture by its web address.
         </p>
       </Card>
     </div>

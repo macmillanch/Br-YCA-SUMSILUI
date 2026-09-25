@@ -58,8 +58,9 @@ rotate if the site is redeploied — a signed-in editor stays signed in.
 
 ## 2. Cloudinary
 
-Needed from Plan 2 (photo uploads). Set it up now so the environment is complete
-when that code lands.
+Needed for photo uploads. The gallery works without it — an office-bearer adds a
+picture by its web address — but an uploaded file is refused until the three
+values below are set.
 
 1. Sign up at <https://cloudinary.com/users/register/free> and note the **Cloud
    name** shown in the dashboard header.
@@ -74,13 +75,18 @@ when that code lands.
      strangers can post to.
    - Note the preset's **Folder** prefix, e.g. `yca-sumsilui/`, so the site's
      images are separable from anything else in the account.
-4. Put all four values in `.env.local`:
-   `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`,
-   `CLOUDINARY_UPLOAD_PRESET`.
+   - This site does **not** read the preset. Every upload is signed with the API
+     secret on the server, so the preset exists to keep the account honest if a
+     browser ever uploads to it directly.
+4. Put the values the site reads in `.env.local`: `CLOUDINARY_CLOUD_NAME`,
+   `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`. `CLOUDINARY_UPLOAD_PRESET` is
+   optional and unused by this code.
 
 Uploads are verified on the server: JPEG, PNG or WebP only, 8 MB maximum. A file
 the browser claims is a photo but whose bytes say otherwise is rejected before
-anything reaches Cloudinary.
+anything reaches Cloudinary. While the three values above are missing, an upload
+is refused with a plain explanation on the admin screen rather than a half-saved
+picture, and a picture can still be added by its web address.
 
 ---
 
@@ -95,7 +101,7 @@ anything reaches Cloudinary.
 3. Add the environment variables under **Project → Settings → Environment
    Variables** for **Production, Preview and Development**:
    `MONGODB_URI`, `MONGODB_DB`, `BCRYPT_ROUNDS`, `CLOUDINARY_CLOUD_NAME`,
-   `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `CLOUDINARY_UPLOAD_PRESET`.
+   `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
    Paste each value with no surrounding quotes or trailing space.
 4. Deploy. Then check the two things that prove the wiring survived:
    - `https://<your-domain>/login` renders and a seeded account signs in.

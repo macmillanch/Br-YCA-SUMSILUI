@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 export default async function ContactPage() {
-  const contact = await getContactDetails();
+  const { contact, unavailable } = await getContactDetails();
 
   return (
     <div className="container-page space-y-8 py-10">
@@ -20,7 +20,7 @@ export default async function ContactPage() {
         description="Write to the Secretary for anything the branch handles, and to the Treasurer for a receipt or a query about the accounts."
       />
 
-      <ContactSection contact={contact} />
+      <ContactSection contact={contact} unavailable={unavailable} />
 
       <p className="text-xs leading-5 text-ink-muted">
         Contact details are held in one place — Admin&nbsp;&rarr;&nbsp;Settings — and read from there

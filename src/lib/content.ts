@@ -129,6 +129,7 @@ export type HomepageContent = {
   photos: readonly GalleryPhoto[];
   photosUnavailable: boolean;
   contact: ContactDetails;
+  contactUnavailable: boolean;
 };
 
 export { KIND_LABEL, MEMBER_TYPE_LABEL, STATUS_LABEL } from "@/lib/labels";
@@ -159,10 +160,32 @@ function contactFromSettings(settings: SettingsValues): ContactDetails {
   };
 }
 
+/** What the contact blocks show, and whether they were able to look. */
+export type ContactContent = {
+  contact: ContactDetails;
+  /** True when the settings could not be read at all, so the blanks prove nothing. */
+  unavailable: boolean;
+};
+
+/**
+ * Through an outage the details are unreadable, which is not the same claim as
+ * "the branch has never given a phone number". So nothing is offered in their
+ * place, not even the placeholder line a reader would take for the office address.
+ */
+export function toContactDetails(settings: SettingsValues | null): ContactContent {
+  if (!settings) {
+    return {
+      contact: { addressLines: [], phone: null, email: null, officeHours: null, mapUrl: null },
+      unavailable: true,
+    };
+  }
+  return { contact: contactFromSettings(settings), unavailable: false };
+}
+
 /**
  * A settings read that fails must not take the page down with it. The sections
- * that need it fall back to their own "not published yet" wording, so a
- * timeout never becomes a page of blanks or, worse, a page of guesses.
+ * that need it say they could not read, so a timeout never becomes a page of
+ * blanks that a member would mistake for a branch that has published nothing.
  */
 async function loadSettingsOrNull(): Promise<SettingsValues | null> {
   try {
@@ -171,11 +194,6 @@ async function loadSettingsOrNull(): Promise<SettingsValues | null> {
     console.error("site settings are unavailable", error);
     return null;
   }
-}
-
-async function loadContact(): Promise<ContactDetails> {
-  const settings = await loadSettingsOrNull();
-  return settings ? contactFromSettings(settings) : CONTACT_PLACEHOLDER;
 }
 
 export type BankDetails = {
@@ -196,25 +214,36 @@ const BLANK_BANK: BankDetails = {
   upiId: null,
 };
 
+export type BankDetailsContent = {
+  bank: BankDetails;
+  /** True when the settings could not be read at all, so the blanks prove nothing. */
+  unavailable: boolean;
+};
+
 /**
  * The donate page promises these came from the Treasurer and not from the
  * template, so every field starts null and only a saved value can fill it.
+ * An unreadable settings document is reported separately: a number that is
+ * merely unpublished and one that could not be looked up ask the visitor for
+ * different things.
  */
-export async function getBankDetails(): Promise<BankDetails> {
-  try {
-    const settings = await getSettings();
-    return {
+export function toBankDetails(settings: SettingsValues | null): BankDetailsContent {
+  if (!settings) return { bank: BLANK_BANK, unavailable: true };
+  return {
+    bank: {
       accountName: settings.branchName || null,
       bankName: settings.bankName || null,
       bankBranch: settings.bankBranch || null,
       accountNumber: settings.accountNumber || null,
       ifsc: settings.ifsc || null,
       upiId: settings.upiId || null,
-    };
-  } catch (error) {
-    console.error("bank details unavailable", error);
-    return BLANK_BANK;
-  }
+    },
+    unavailable: false,
+  };
+}
+
+export async function getBankDetails(): Promise<BankDetailsContent> {
+  return toBankDetails(await loadSettingsOrNull());
 }
 
 /**
@@ -231,6 +260,7 @@ export async function getHomepageContent(): Promise<HomepageContent> {
     loadSettingsOrNull(),
     getGalleryStrip(),
   ]);
+  const contact = toContactDetails(settings);
 
   return {
     introduction: settings?.missionText.trim() || null,
@@ -241,7 +271,8 @@ export async function getHomepageContent(): Promise<HomepageContent> {
     finance,
     photos: photos.state === "ready" ? photos.items : [],
     photosUnavailable: photos.state === "unavailable",
-    contact: settings ? contactFromSettings(settings) : CONTACT_PLACEHOLDER,
+    contact: contact.contact,
+    contactUnavailable: contact.unavailable,
   };
 }
 
@@ -417,8 +448,8 @@ export async function getWorkBySlug(slug: string): Promise<WorkDetail> {
   return { state: "ready", project: detail.project, updates: detail.updates };
 }
 
-export async function getContactDetails(): Promise<ContactDetails> {
-  return loadContact();
+export async function getContactDetails(): Promise<ContactContent> {
+  return toContactDetails(await loadSettingsOrNull());
 }
 
 /**

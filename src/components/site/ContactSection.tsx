@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/Button";
+import { SectionUnavailable } from "@/components/site/EmptyState";
 import type { ContactDetails } from "@/lib/content";
 
 function Missing({ label }: { label: string }) {
@@ -12,68 +13,86 @@ function Missing({ label }: { label: string }) {
   );
 }
 
-export function ContactSection({ contact }: { contact: ContactDetails }) {
+export function ContactSection({
+  contact,
+  unavailable = false,
+}: {
+  contact: ContactDetails;
+  /** The settings could not be read, so no blank here proves anything. */
+  unavailable?: boolean;
+}) {
   return (
     <div className="grid gap-6 md:grid-cols-2">
-      <address className="not-italic">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Address</p>
-        <p className="mt-2 text-[15px] leading-7">
-          {contact.addressLines.map((line) => (
-            <span key={line} className="block">
-              {line}
-            </span>
-          ))}
-        </p>
+      {unavailable ? (
+        <SectionUnavailable what="The branch's contact details" />
+      ) : (
+        <address className="not-italic">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Address</p>
+          <p className="mt-2 text-[15px] leading-7">
+            {contact.addressLines.map((line) => (
+              <span key={line} className="block">
+                {line}
+              </span>
+            ))}
+          </p>
 
-        <dl className="mt-5 space-y-3 text-[15px]">
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Phone</dt>
-            <dd className="mt-1">
-              {contact.phone ? (
-                <a href={`tel:${contact.phone}`} className="text-green-700 underline underline-offset-2">
-                  {contact.phone}
-                </a>
-              ) : (
-                <Missing label="The branch office phone number is" />
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Email</dt>
-            <dd className="mt-1">
-              {contact.email ? (
-                <a
-                  href={`mailto:${contact.email}`}
-                  className="text-green-700 underline underline-offset-2"
-                >
-                  {contact.email}
-                </a>
-              ) : (
-                <Missing label="The branch office email address is" />
-              )}
-            </dd>
-          </div>
-          {contact.officeHours ? (
+          <dl className="mt-5 space-y-3 text-[15px]">
             <div>
               <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">
-                Office hours
+                Phone
               </dt>
-              <dd className="mt-1">{contact.officeHours}</dd>
+              <dd className="mt-1">
+                {contact.phone ? (
+                  <a
+                    href={`tel:${contact.phone}`}
+                    className="text-green-700 underline underline-offset-2"
+                  >
+                    {contact.phone}
+                  </a>
+                ) : (
+                  <Missing label="The branch office phone number is" />
+                )}
+              </dd>
             </div>
-          ) : null}
-        </dl>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">
+                Email
+              </dt>
+              <dd className="mt-1">
+                {contact.email ? (
+                  <a
+                    href={`mailto:${contact.email}`}
+                    className="text-green-700 underline underline-offset-2"
+                  >
+                    {contact.email}
+                  </a>
+                ) : (
+                  <Missing label="The branch office email address is" />
+                )}
+              </dd>
+            </div>
+            {contact.officeHours ? (
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">
+                  Office hours
+                </dt>
+                <dd className="mt-1">{contact.officeHours}</dd>
+              </div>
+            ) : null}
+          </dl>
 
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Button href="/contact" variant="ghost">
-            Contact details
-          </Button>
-          {contact.mapUrl ? (
-            <Button href={contact.mapUrl} target="_blank" rel="noreferrer">
-              Open in maps
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button href="/contact" variant="ghost">
+              Contact details
             </Button>
-          ) : null}
-        </div>
-      </address>
+            {contact.mapUrl ? (
+              <Button href={contact.mapUrl} target="_blank" rel="noreferrer">
+                Open in maps
+              </Button>
+            ) : null}
+          </div>
+        </address>
+      )}
 
       <div className="rounded-[12px] border border-line bg-paper-alt p-6">
         <h3 className="text-lg">How to reach the branch</h3>

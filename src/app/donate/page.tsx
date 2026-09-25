@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@/components/site/EmptyState";
+import { PageHeader, SectionUnavailable } from "@/components/site/EmptyState";
 import { getBankDetails, getContactDetails } from "@/lib/content";
 
 export const metadata: Metadata = {
@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 };
 
 export default async function DonatePage() {
-  const contact = await getContactDetails();
-  const bank = await getBankDetails();
+  const { contact, unavailable: contactUnavailable } = await getContactDetails();
+  const { bank, unavailable: bankUnavailable } = await getBankDetails();
 
   return (
     <div className="container-page max-w-3xl space-y-8 py-10">
@@ -31,32 +31,40 @@ export default async function DonatePage() {
 
       <section aria-labelledby="bank-details">
         <h2 id="bank-details">Account for contributions</h2>
-        <dl className="mt-4 divide-y divide-line border-y border-line text-sm">
-          {([
-            { label: "Account name", value: bank.accountName },
-            { label: "Bank", value: bank.bankName },
-            { label: "Branch", value: bank.bankBranch },
-            { label: "Account number", value: bank.accountNumber },
-            { label: "IFSC", value: bank.ifsc },
-            { label: "UPI ID", value: bank.upiId },
-          ] as const).map((row) => (
-            <div key={row.label} className="flex items-baseline justify-between gap-4 py-3">
-              <dt className="text-ink-muted">{row.label}</dt>
-              <dd className="text-right font-medium">
-                {row.value ?? (
-                  <span className="rounded-[4px] bg-paper-alt px-2 py-0.5 text-xs font-normal text-ink-muted">
-                    to be published by the Treasurer
-                  </span>
-                )}
-              </dd>
-            </div>
-          ))}
-        </dl>
-        <p className="mt-3 text-xs leading-5 text-ink-muted">
-          Bank details are never invented on this site. The Treasurer enters the association&rsquo;s
-          real account once in Admin&nbsp;&rarr;&nbsp;Settings, and this page then reads it from there —
-          so a corrected account number appears here without a redeploy.
-        </p>
+        {bankUnavailable ? (
+          <div className="mt-4">
+            <SectionUnavailable what="The account details" />
+          </div>
+        ) : (
+          <>
+            <dl className="mt-4 divide-y divide-line border-y border-line text-sm">
+              {([
+                { label: "Account name", value: bank.accountName },
+                { label: "Bank", value: bank.bankName },
+                { label: "Branch", value: bank.bankBranch },
+                { label: "Account number", value: bank.accountNumber },
+                { label: "IFSC", value: bank.ifsc },
+                { label: "UPI ID", value: bank.upiId },
+              ] as const).map((row) => (
+                <div key={row.label} className="flex items-baseline justify-between gap-4 py-3">
+                  <dt className="text-ink-muted">{row.label}</dt>
+                  <dd className="text-right font-medium">
+                    {row.value ?? (
+                      <span className="rounded-[4px] bg-paper-alt px-2 py-0.5 text-xs font-normal text-ink-muted">
+                        to be published by the Treasurer
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3 text-xs leading-5 text-ink-muted">
+              Bank details are never invented on this site. The Treasurer enters the association&rsquo;s
+              real account once in Admin&nbsp;&rarr;&nbsp;Settings, and this page then reads it from
+              there — so a corrected account number appears here without a redeploy.
+            </p>
+          </>
+        )}
       </section>
 
       <section aria-labelledby="acknowledgements">
@@ -78,7 +86,11 @@ export default async function DonatePage() {
               {contact.email}
             </a>
           ) : (
-            <span className="text-ink-muted">the branch office email, once published</span>
+            <span className="text-ink-muted">
+              {contactUnavailable
+                ? "the branch office email, which cannot be read just now"
+                : "the branch office email, once published"}
+            </span>
           )}{" "}
           or call at the office during its hours.
         </p>

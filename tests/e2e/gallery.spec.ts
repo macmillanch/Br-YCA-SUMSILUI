@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { removeEveryPicture } from "./gallery-fixtures";
 
 const ADMIN = { email: "admin@test.yca.local", password: "branch-test-password" };
+const EDITOR = { email: "editor@test.yca.local", password: "branch-test-password" };
 
 /** Cloudinary hands back an address like this; the gallery stores it as given. */
 const CLOUDINARY_URL =
@@ -10,12 +12,16 @@ const PNG = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
 ]);
 
-async function signInAsAdmin(page: Page) {
+async function signInAs(page: Page, user: { email: string; password: string } = ADMIN) {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill(ADMIN.email);
-  await page.getByLabel(/password/i).fill(ADMIN.password);
+  await page.getByLabel(/email/i).fill(user.email);
+  await page.getByLabel(/password/i).fill(user.password);
   await page.getByRole("button", { name: /^sign in$/i }).click();
   await page.waitForURL("**/admin");
+}
+
+async function signInAsAdmin(page: Page) {
+  await signInAs(page, ADMIN);
 }
 
 /** The words the branch has to supply for any picture, however it arrives. */
@@ -45,8 +51,14 @@ async function expectRefused(page: Page, message: RegExp) {
   await expect(page.getByText("Saved.")).toHaveCount(0);
 }
 
-test("a picture with its written description appears under its own album", async ({ page }) => {
-  await signInAsAdmin(page);
+test.afterEach(async ({ page }) => {
+  await removeEveryPicture(page);
+});
+
+test("an editor adds a picture with its written description and it appears under its own album", async ({
+  page,
+}) => {
+  await signInAs(page, EDITOR);
   await addPicture(page, {
     album: "Annual general meeting 2026",
     caption: "Office-bearers elected for the two-year term",
@@ -60,7 +72,9 @@ test("a picture with its written description appears under its own album", async
   ).toBeVisible();
   await expect(page.getByText("Office-bearers elected for the two-year term")).toBeVisible();
   await expect(
-    page.locator('img[alt="Nine people seated at a long table under a banner"]'),
+    page
+      .locator('img[alt="Nine people seated at a long table under a banner"]')
+      .first(),
   ).toBeVisible();
 });
 
@@ -73,7 +87,11 @@ test("two albums keep their pictures apart, in the order the branch numbered the
     caption: "The choir after the service",
     alt: "A group of singers standing on a low stage",
   };
-  const first = { ...second, album: "Annual general meeting 2026", caption: "The reading of the report" };
+  const first = {
+    album: "Annual general meeting 2026",
+    caption: "The reading of the report",
+    alt: "A man standing at a lectern reading from a paper",
+  };
   await addPicture(page, second);
   await expect(page.getByText("Saved.")).toBeVisible();
   await addPicture(page, first);
@@ -150,7 +168,9 @@ test("a published picture reaches the front-page strip too", async ({ page }) =>
 
   await page.goto("/");
   await expect(
-    page.locator('img[alt="People sitting in a semicircle on the grass at dusk"]'),
+    page
+      .locator('img[alt="People sitting in a semicircle on the grass at dusk"]')
+      .first(),
   ).toBeVisible();
   await expect(page.getByText("The evening session on the lawn")).toBeVisible();
 });

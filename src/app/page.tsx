@@ -99,7 +99,10 @@ export default async function HomePage() {
         <section aria-labelledby="contact-heading">
           <SectionHeading id="contact-heading" title="Contact the branch" />
           <div className="mt-6">
-            <ContactSection contact={content.contact} />
+            <ContactSection
+              contact={content.contact}
+              unavailable={content.contactUnavailable}
+            />
           </div>
         </section>
       </div>
